@@ -116,9 +116,11 @@ def get_readability_scores(text: str) -> Dict[str, int]:
     }
 
 def process_content_vectors(docs: List[str], lang: str) -> pd.DataFrame:
-    if not docs: return pd.DataFrame(columns=['Expression', 'Mean Count', 'Coverage (%)'])
+    if not docs:
+        return pd.DataFrame(columns=['Expression', 'Mean Count', 'Coverage (%)'])
+    
     stopw = stopwords.words(lang)
-    cv = CountVectorizer(ngram_range=(2, 4), stop_words=stopw)
+    cv = CountVectorizer(ngram_range=(2, 4), stop_words=stopw, min_df=1, max_df=0.95)
     X = cv.fit_transform(docs)
     terms = cv.get_feature_names_out()
     cov = np.array((X > 0).sum(axis=0)).ravel() / len(docs) * 100
@@ -127,10 +129,14 @@ def process_content_vectors(docs: List[str], lang: str) -> pd.DataFrame:
     for i, term in enumerate(terms):
         counts = X[:, cv.vocabulary_[term]].toarray().ravel()
         nz = counts[counts > 0]
-        if nz.size and cov[i] >= 40 and is_relevant_expression(term):
-            data.append({'Expression': term, 'Mean Count': round(nz.mean()), 'Coverage (%)': round(cov[i])})
+        if nz.size and cov[i] >= 30 and is_relevant_expression(term):
+            data.append({
+                'Expression': term,
+                'Mean Count': round(nz.mean(), 1),
+                'Coverage (%)': round(cov[i], 1)
+            })
 
-    return pd.DataFrame(data).query('`Mean Count` > 1 and `Coverage (%)` > 50').sort_values('Coverage (%)', ascending=False)
+    return pd.DataFrame(data).sort_values('Coverage (%)', ascending=False).head(100)
 
 def run():
     st.title('🔍 Semantic Analyzer')
