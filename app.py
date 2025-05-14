@@ -1,8 +1,12 @@
 import streamlit as st
-from tools import fusion, semantic_analyzer
 
+# Doit être la toute première commande Streamlit
 st.set_page_config(page_title="Outils SEO", layout="wide")
 
+# Ensuite les autres imports
+from tools import fusion, semantic_analyzer
+
+# Interface principale
 st.sidebar.title("🧰 Suite d'outils SEO")
 tool = st.sidebar.selectbox(
     "Choisissez un outil",
