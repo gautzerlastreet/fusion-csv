@@ -10,6 +10,7 @@ def run():
     import nltk
     from nltk.corpus import stopwords
     import time
+    import numpy as np
 
     @st.cache_resource
     def download_nltk_resources():
@@ -131,20 +132,39 @@ def run():
         total_docs = len(valid_urls)
 
         data = []
+        all_word_counts = list(word_counts.values())
+        total_words = sum(all_word_counts)
+
         for i, expr in enumerate(features):
             counts = X_array[:, i]
             total_occurrence = counts.sum()
             doc_count = (counts > 0).sum()
             if is_relevant_expression(expr) and (doc_count / total_docs) >= 0.4:
                 moyenne = round(total_occurrence / total_docs, 2)
-                min_occur = counts.min()
-                max_occur = counts.max()
+                min_occur = int(counts.min())
+                max_occur = int(counts.max())
                 moyenne_fmt = f"{moyenne} ({max_occur}-{min_occur})"
                 couverture = round((doc_count / total_docs) * 100)
-                total_words = sum([word_counts[u] for u in valid_urls])
                 densite = round((total_occurrence / total_words) * 100, 2)
-                data.append((expr, moyenne_fmt, f"{couverture}%", f"{densite}%"))
+                data.append((expr, moyenne_fmt, couverture, densite))
 
         df_final = pd.DataFrame(data, columns=["Expression", "Moyenne par contenu", "% Présence", "Densité moyenne"])
-        df_final = df_final.sort_values(by=["% Présence", "Moyenne par contenu"], ascending=[False, False]).reset_index(drop=True)
+        df_final = df_final[df_final["% Présence"] >= 40]
+        df_final = df_final.sort_values(by=["% Présence", "Densité moyenne", "Moyenne par contenu"], ascending=[False, False, False]).reset_index(drop=True)
+
+        df_final["% Présence"] = df_final["% Présence"].astype(str) + "%"
+        df_final["Densité moyenne"] = df_final["Densité moyenne"].astype(str) + "%"
+
         st.dataframe(df_final, use_container_width=True)
+
+        # Statistiques globales
+        st.subheader("📈 Statistiques globales")
+        med_words = int(np.median(all_word_counts))
+        avg_words = int(np.mean(all_word_counts))
+
+        st.markdown(f"**Nombre médian de mots :** {med_words}")
+        st.markdown(f"**Nombre moyen de mots :** {avg_words}")
+
+        st.markdown("**Top 10 des expressions les plus stratégiques :**")
+        top_10 = df_final.head(10).reset_index(drop=True)
+        st.dataframe(top_10, use_container_width=True)
