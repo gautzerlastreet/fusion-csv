@@ -33,7 +33,15 @@ def main_tab():
     if uploaded_file is None:
         return
 
-    df = pd.read_excel(uploaded_file)
+    
+    try:
+        df = pd.read_excel(uploaded_file, engine='openpyxl')
+    except ImportError:
+        st.error("Le package 'openpyxl' n'est pas installé. Ajoutez 'openpyxl' à votre requirements.txt et relancez l'app.")
+        return
+    except Exception as e:
+        st.error(f"Erreur lecture du fichier Excel: {e}")
+        return
     threshold = st.slider(
         "Seuil de similarité (%)", min_value=0, max_value=100, value=40, step=10
     )
@@ -75,11 +83,13 @@ def main_tab():
         "Keyword Count": "Count secondaires"
     })
 
-    # Réorganiser colonnes
-    cols = [
+        # Réorganiser colonnes
+    base_cols = [
         "Mot clé principal", "Volume mot clé principal", "Mots clés secondaires",
         "Volume cumulé secondaires", "% similarité secondaires", "Count secondaires"
-    ] + [c for c in df_final.columns if c not in cols]
+    ]
+    other_cols = [c for c in df_final.columns if c not in base_cols]
+    cols = base_cols + other_cols
     df_final = df_final[cols]
 
     # Métriques globales
