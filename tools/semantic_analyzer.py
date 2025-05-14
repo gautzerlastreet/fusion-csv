@@ -77,7 +77,7 @@ def run():
         "les champs obligatoires sont indiqués", "accéder à votre espace personnel",
         "offrir les meilleures expériences", "afin de vous garantir", "nous utilisons des cookies pour",
         "valider votre inscription", "consultez nos mentions légales", "nous utilisons des technologies",
-        "ce site a été édité par", "prendre connaissance de notre politique"
+        "ce site a été édité par", "prendre connaissance de notre politique", "facebook" 
     ])
 
     def is_relevant_expression(expr):
