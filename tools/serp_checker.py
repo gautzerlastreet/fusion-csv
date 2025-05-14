@@ -21,7 +21,8 @@ HEADERS = {
 def get_bing_results(query: str) -> list[dict]:
     """Scrape les résultats Bing et conserve uniquement 10 URLs uniques par domaine."""
     url = "https://www.bing.com/search"
-    params = {"q": query, "count": 20}
+    # On demande plus de résultats pour garantir 10 domaines uniques
+    params = {"q": query, "count": 50}
     resp = requests.get(url, headers=HEADERS, params=params, timeout=5)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -30,6 +31,7 @@ def get_bing_results(query: str) -> list[dict]:
     results = []
     seen_domains = set()
     for li in items:
+        # Stop quand on a 10 domaines distincts
         if len(results) >= 10:
             break
         h2 = li.find("h2")
