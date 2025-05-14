@@ -11,7 +11,6 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import nltk
 from nltk.corpus import stopwords
-from nltk.tokenize import sent_tokenize
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from rake_nltk import Rake
 import textstat
@@ -125,11 +124,11 @@ def extract_content_from_url(url: str) -> Tuple[str, str, str, List[str], List[s
 def extract_rake_keywords(text: str, max_keywords: int = 10) -> List[Tuple[str, float]]:
     """
     Extrait les mots-clés RAKE et leurs scores.
-    On override la tokenisation des phrases pour éviter l'erreur 'punkt_tab' :
+    On utilise un découpage de phrases simple via regex pour éviter l’erreur punkt_tab.
     """
     rake = Rake()
-    # Utiliser sent_tokenize issu de nltk (qui utilise le modèle 'punkt' téléchargé)
-    rake._tokenize_text_to_sentences = lambda txt: sent_tokenize(txt)
+    # override du découpage en phrases
+    rake._tokenize_text_to_sentences = lambda txt: re.split(r'[.?!]\s+', txt)
     rake.extract_keywords_from_text(text)
     return rake.get_ranked_phrases_with_scores()[:max_keywords]
 
