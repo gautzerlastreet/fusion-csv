@@ -80,19 +80,15 @@ def extract_content_from_url(url: str) -> Dict:
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text,'html.parser')
         base = urlparse(url).netloc
-        # Remove scripts/styles/navigation blocks
         for tag in soup(['script','style','header','footer','nav','form']):
             tag.decompose()
-        # Select main container or largest div
         container = soup.find('main') or soup.find(id='content')
         if not container:
             divs = soup.find_all('div')
             container = max(divs, key=lambda d: len(d.get_text().split()), default=soup.body)
-        # Count media
         data['images'] = len(container.find_all('img'))
         data['tables'] = len(container.find_all('table'))
         data['buttons'] = len(container.find_all('button'))
-        # Count unique links
         internal_links, external_links = set(), set()
         for a in container.find_all('a', href=True):
             href = a['href']
@@ -103,7 +99,6 @@ def extract_content_from_url(url: str) -> Dict:
                 internal_links.add(href)
         data['internal'] = len(internal_links)
         data['external'] = len(external_links)
-        # Extract text structure
         paras = []
         for tag in container.find_all(['h1','h2','h3','p']):
             txt = tag.get_text(' ', strip=True)
@@ -183,28 +178,6 @@ def run() -> None:
     df_read = pd.DataFrame([{'URL':u, **get_readability_scores(d['raw'])}
                              for u, d in results.items()])
 
-    # Comparative Summary if user_url provided
-    if user_data:
-        st.subheader('🔍 Analyse comparative de votre page')
-        uwc = len(clean_text(user_data['raw']).split())
-        median_wc = int(df_stats['Word Count'].median())
-        mean_wc = int(df_stats['Word Count'].mean())
-        c1, c2 = st.columns(2)
-        c1.metric('Mots (votre page)', uwc, delta=uwc-mean_wc)
-        c2.metric('Médiane groupe', median_wc)
-        # Missing keywords
-        group_terms = set(df_cv['Expression'])
-        user_text = clean_text(user_data['raw'])
-        missing = [t for t in group_terms if t not in user_text]
-        st.markdown(f"**Mots clés manquants ({len(missing)})**: {', '.join(missing[:10])}{'...' if len(missing)>10 else ''}")
-        # Readability comparison
-        ur = get_readability_scores(user_data['raw'])
-        mean_read = df_read.mean(numeric_only=True).round().astype(int)
-        r1, r2, r3 = st.columns(3)
-        r1.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=ur['Flesch Ease']-mean_read['Flesch Ease'])
-        r2.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=ur['Kincaid Grade']-mean_read['Kincaid Grade'])
-        r3.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=ur['Gunning Fog']-mean_read['Gunning Fog'])
-
     # Display Sections
     with st.expander('🗂️ Structure & Stats', expanded=True):
         df_str = pd.DataFrame([{'URL':u, 'Title':d['title'], 'H1':d['h1'], 'Structure': ' | '.join(d['subsecs'])}
@@ -229,3 +202,26 @@ def run() -> None:
     st.download_button('📥 Export Media & Links', df_media.to_csv(index=False), file_name='media_links.csv')
     st.download_button('📥 Export Expressions', df_cv.to_csv(index=False), file_name='expressions.csv')
     st.download_button('📥 Export Readability', df_read.to_csv(index=False), file_name='readability.csv')
+
+    # Comparative Summary if user_url provided (moved after all analyses)
+    if user_data:
+        st.subheader('🔍 Analyse comparative de votre page')
+        uwc = len(clean_text(user_data['raw']).split())
+        median_wc = int(df_stats['Word Count'].median())
+        mean_wc = int(df_stats['Word Count'].mean())
+        c1, c2 = st.columns(2)
+        c1.metric('Mots (votre page)', uwc, delta=int(uwc - mean_wc))
+        c2.metric('Médiane groupe', median_wc)
+        group_terms = set(df_cv['Expression'])
+        user_text = clean_text(user_data['raw'])
+        missing = [t for t in group_terms if t not in user_text]
+        st.markdown(f"**Mots clés manquants ({len(missing)})**: {', '.join(missing[:10])}{'...' if len(missing)>10 else ''}")
+        ur = get_readability_scores(user_data['raw'])
+        mean_read = df_read.mean(numeric_only=True).round().astype(int)
+        r1, r2, r3 = st.columns(3)
+        r1.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=int(ur['Flesch Ease'] - mean_read['Flesch Ease']))
+        r2.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=int(ur['Kincaid Grade'] - mean_read['Kincaid Grade']))
+        r3.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=int(ur['Gunning Fog'] - mean_read['Gunning Fog']))
+
+if __name__ == "__main__":
+    run()
