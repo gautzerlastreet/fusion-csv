@@ -24,9 +24,7 @@ def run():
 
     # Expressions à exclure
     EXCLUDED_EXPRESSIONS = set([
-        # Interactions et messages inutiles
         "bonjour", "merci", "au revoir", "salut", "bienvenue", "félicitations", "bravo",
-        # Mentions légales / cookies
         "cookies", "données personnelles", "caractère personnel", "protection des données", "mentions légales",
         "charte d’utilisation", "politique de confidentialité", "gérer les cookies", "stockées ou extraites",
         "gestion des cookies", "consentement aux cookies", "continuer sans accepter", "savoir plus", "en savoir plus",
@@ -48,11 +46,10 @@ def run():
         return True
 
     def deduplicate_ngrams(ngrams):
-        """Supprime les expressions plus courtes incluses dans des plus longues"""
         deduped = []
-        for expr, score in sorted(ngrams, key=lambda x: (-len(x[0].split()), -x[1])):
+        for expr, count in sorted(ngrams, key=lambda x: (-len(x[0].split()), -x[1])):
             if not any(expr in longer for longer, _ in deduped):
-                deduped.append((expr, score))
+                deduped.append((expr, count))
         return deduped
 
     def clean_text(text):
@@ -129,30 +126,18 @@ def run():
         st.subheader("🧩 Expressions clés communes (2 à 4 mots)")
         vec = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words, max_features=1000)
         X = vec.fit_transform(cleaned_texts)
-        sums = X.sum(axis=0)
-        ngrams = [(word, int(sums[0, idx])) for word, idx in vec.vocabulary_.items()]
-        filtered = [(ng, cnt) for ng, cnt in ngrams if is_relevant_expression(ng) and cnt > 1]
-        deduped = deduplicate_ngrams(filtered)
-        df_occ = pd.DataFrame([(ng, cnt, round(cnt/len(valid_urls), 2)) for ng, cnt in deduped],
-                              columns=["Occurrence", "Présence", "Moyenne"])
-        st.dataframe(df_occ, use_container_width=True)
+        features = vec.get_feature_names_out()
+        presence = (X > 0).sum(axis=0).A1
+        sums = X.sum(axis=0).A1
+        total_docs = len(valid_urls)
 
-        # Expressions par URL
-        st.subheader("📌 Expressions les plus importantes (2 à 4 mots)")
-        vec2 = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words, max_features=500)
-        matrix = vec2.fit_transform(cleaned_texts)
-        features = vec2.get_feature_names_out()
-        cols = st.columns(min(3, len(valid_urls)))
-        for i, (url, vec) in enumerate(zip(valid_urls, matrix.toarray())):
-            col_idx = i % len(cols)
-            with cols[col_idx]:
-                st.markdown(f"**{url.split('//')[1][:30]}...**")
-                scores = dict(zip(features, vec))
-                sorted_exprs = sorted([(k, v) for k, v in scores.items() if is_relevant_expression(k) and v > 0],
-                                      key=lambda x: x[1], reverse=True)
-                top_exprs = deduplicate_ngrams(sorted_exprs)[:10]
-                if top_exprs:
-                    df_top = pd.DataFrame(top_exprs, columns=["Expression", "Score"])
-                    st.dataframe(df_top, use_container_width=True)
-                else:
-                    st.write("Aucune expression significative trouvée.")
+        data = []
+        for expr, total_occurrence, doc_count in zip(features, sums, presence):
+            if is_relevant_expression(expr):
+                moyenne = round(total_occurrence / total_docs, 2)
+                couverture = f"{round((doc_count / total_docs) * 100)}%"
+                data.append((expr, moyenne, couverture))
+
+        df_final = pd.DataFrame(data, columns=["Expression", "Moyenne par contenu", "% Présence"])
+        df_final = df_final.sort_values(by="Moyenne par contenu", ascending=False).reset_index(drop=True)
+        st.dataframe(df_final, use_container_width=True)
