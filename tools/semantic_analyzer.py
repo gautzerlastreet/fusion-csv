@@ -13,13 +13,23 @@ from sklearn.feature_extraction.text import CountVectorizer
 import textstat
 from urllib.parse import urlparse
 from typing import Dict
+import shutil
 
 # --- PDF Export Setup ---
 try:
     import pdfkit
-    PDFKIT_AVAILABLE = True
+    _exe = shutil.which('wkhtmltopdf')
+    if _exe:
+        PDFKIT_CONFIG = pdfkit.configuration(wkhtmltopdf=_exe)
+        PDFKIT_AVAILABLE = True
+    else:
+        PDFKIT_CONFIG = None
+        PDFKIT_AVAILABLE = False
+        logging.getLogger(__name__).warning('wkhtmltopdf executable not found in PATH')
 except ImportError:
+    PDFKIT_CONFIG = None
     PDFKIT_AVAILABLE = False
+    logging.getLogger(__name__).warning('pdfkit not installed, PDF export disabled')
 
 # --- Logger Configuration ---
 logger = logging.getLogger(__name__)
@@ -177,19 +187,12 @@ def run() -> None:
         for u, d in results.items()
     ])
     df_media = pd.DataFrame([
-        {
-            'URL': u,
-            'Images': d['images'],
-            'Tables': d['tables'],
-            'Buttons': d['buttons'],
-            'Internal': d['internal'],
-            'External': d['external']
-        }
+        {'URL': u, 'Images': d['images'], 'Tables': d['tables'], 'Buttons': d['buttons'],
+         'Internal': d['internal'], 'External': d['external']}
         for u, d in results.items()
     ])
     docs = [clean_text(d['raw']) for d in results.values()]
-    stopw = stopwords.words(language)
-    cv = CountVectorizer(ngram_range=(2, 4), stop_words=stopw)
+    cv = CountVectorizer(ngram_range=(2, 4), stop_words=stopwords.words(language))
     X = cv.fit_transform(docs)
     terms = cv.get_feature_names_out()
     cov = np.array((X > 0).sum(axis=0)).ravel() / len(docs) * 100
@@ -200,19 +203,13 @@ def run() -> None:
         mean_ct = int(round(nz.mean())) if nz.size > 0 else 0
         coverage = int(round(cov[i]))
         if coverage >= 40 and is_relevant_expression(term):
-            rows.append({
-                'Expression': term,
-                'Mean Count': mean_ct,
-                'Coverage (%)': coverage
-            })
-    df_cv = pd.DataFrame(rows).query('`Mean Count` > 1 and `Coverage (%)` > 50') \
-                  .sort_values('Coverage (%)', ascending=False)
+            rows.append({'Expression': term, 'Mean Count': mean_ct, 'Coverage (%)': coverage})
+    df_cv = pd.DataFrame(rows).query('`Mean Count` > 1 and `Coverage (%)` > 50').sort_values('Coverage (%)', ascending=False)
     df_read = pd.DataFrame([
-        {'URL': u, **get_readability_scores(d['raw'])}
-        for u, d in results.items()
+        {'URL': u, **get_readability_scores(d['raw'])} for u, d in results.items()
     ])
 
-    # Display
+    # Display Sections
     with st.expander('🗂️ Structure & Stats', expanded=True):
         df_struct = pd.DataFrame([
             {'URL': u, 'Title': d['title'], 'H1': d['h1'], 'Structure': ' | '.join(d['subsecs'])}
@@ -227,10 +224,10 @@ def run() -> None:
         st.dataframe(df_cv, use_container_width=True)
 
     mean_vals = df_read.mean(numeric_only=True).round().astype(int)
-    c1, c2, c3 = st.columns(3)
-    c1.metric('Moy. Flesch Ease', mean_vals['Flesch Ease'])
-    c2.metric('Moy. Kincaid Grade', mean_vals['Kincaid Grade'])
-    c3.metric('Moy. Gunning Fog', mean_vals['Gunning Fog'])
+    cols = st.columns(3)
+    cols[0].metric('Moy. Flesch Ease', mean_vals['Flesch Ease'])
+    cols[1].metric('Moy. Kincaid Grade', mean_vals['Kincaid Grade'])
+    cols[2].metric('Moy. Gunning Fog', mean_vals['Gunning Fog'])
 
     with st.expander('📖 Readability Metrics', expanded=False):
         st.dataframe(df_read, use_container_width=True)
@@ -238,67 +235,43 @@ def run() -> None:
     # Comparative Summary
     if user_data:
         st.subheader('🔍 Analyse comparative de votre page')
-
-        # Word Count
         uwc = len(clean_text(user_data['raw']).split())
         median_wc = int(df_stats['Word Count'].median())
         mean_wc = int(df_stats['Word Count'].mean())
-        mcol1, mcol2 = st.columns(2)
-        mcol1.metric('Mots (votre page)', uwc, delta=int(uwc - mean_wc))
-        mcol2.metric('Médiane groupe', median_wc)
+        c1, c2 = st.columns(2)
+        c1.metric('Mots (votre page)', uwc, delta=int(uwc - mean_wc))
+        c2.metric('Médiane groupe', median_wc)
 
-        # Missing Keywords
-        terms_group = df_cv['Expression'].tolist()
-        missing = [t for t in terms_group if t not in clean_text(user_data['raw'])]
-        if missing:
-            st.table(pd.DataFrame({'Mots clés manquants': missing}))
+        missing_terms = [t for t in df_cv['Expression'] if t not in clean_text(user_data['raw'])]
+        if missing_terms:
+            st.table(pd.DataFrame({'Mots clés manquants': missing_terms}))
         else:
             st.write('Aucun mot clé manquant pertinent.')
 
-        # Media & Links Comparison
         media_mean = df_media[['Images', 'Internal', 'External']].mean().round().astype(int)
-        imgs, intern, extern = user_data['images'], user_data['internal'], user_data['external']
-        col_img, col_int, col_ext = st.columns(3)
-        col_img.metric('Images (vous)', imgs, delta=int(imgs - media_mean['Images']))
-        col_int.metric('Liens internes (vous)', intern, delta=int(intern - media_mean['Internal']))
-        col_ext.metric('Liens externes (vous)', extern, delta=int(extern - media_mean['External']))
+        i_col, int_col, ext_col = st.columns(3)
+        i_col.metric('Images (vous)', user_data['images'], delta=int(user_data['images'] - media_mean['Images']))
+        int_col.metric('Liens internes (vous)', user_data['internal'], delta=int(user_data['internal'] - media_mean['Internal']))
+        ext_col.metric('Liens externes (vous)', user_data['external'], delta=int(user_data['external'] - media_mean['External']))
 
-        # Readability Comparison
         ur = get_readability_scores(user_data['raw'])
-        mean_read = df_read.mean(numeric_only=True).round().astype(int)
+        read_mean = df_read.mean(numeric_only=True).round().astype(int)
         r1, r2, r3 = st.columns(3)
-        r1.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=int(ur['Flesch Ease'] - mean_read['Flesch Ease']))
-        r2.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=int(ur['Kincaid Grade'] - mean_read['Kincaid Grade']))
-        r3.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=int(ur['Gunning Fog'] - mean_read['Gunning Fog']))
+        r1.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=int(ur['Flesch Ease'] - read_mean['Flesch Ease']))
+        r2.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=int(ur['Kincaid Grade'] - read_mean['Kincaid Grade']))
+        r3.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=int(ur['Gunning Fog'] - read_mean['Gunning Fog']))
 
     # Exports at the bottom
     st.markdown('---')
-    st.download_button(
-        '📥 Export CSV Structure & Stats',
-        pd.merge(df_stats, df_struct, on='URL').to_csv(index=False),
-        file_name='structure_stats.csv'
-    )
-    st.download_button(
-        '📥 Export CSV Media & Links',
-        df_media.to_csv(index=False),
-        file_name='media_links.csv'
-    )
-    st.download_button(
-        '📥 Export CSV Expressions clés',
-        df_cv.to_csv(index=False),
-        file_name='expressions.csv'
-    )
-    st.download_button(
-        '📥 Export CSV Readability',
-        df_read.to_csv(index=False),
-        file_name='readability.csv'
-    )
+    st.download_button('📥 Export CSV Structure & Stats', pd.merge(df_stats, df_struct, on='URL').to_csv(index=False), file_name='structure_stats.csv')
+    st.download_button('📥 Export CSV Media & Links', df_media.to_csv(index=False), file_name='media_links.csv')
+    st.download_button('📥 Export CSV Expressions clés', df_cv.to_csv(index=False), file_name='expressions.csv')
+    st.download_button('📥 Export CSV Readability', df_read.to_csv(index=False), file_name='readability.csv')
 
-    # PDF export button
+    # PDF Export
     if PDFKIT_AVAILABLE:
         html = '<html><head><meta charset="utf-8"></head><body>'
         html += '<h1>📄 Rapport Semantic Analyzer</h1>'
-        # Add sections
         sections = [
             ('Structure & Stats', pd.merge(df_stats, df_struct, on='URL')),
             ('Media & Links', df_media),
@@ -308,27 +281,18 @@ def run() -> None:
         if user_data:
             comp_df = pd.DataFrame({
                 'Metric': ['Images', 'Liens internes', 'Liens externes'],
-                'Vous': [imgs, intern, extern],
+                'Vous': [user_data['images'], user_data['internal'], user_data['external']],
                 'Moyenne': [media_mean['Images'], media_mean['Internal'], media_mean['External']],
-                'Delta': [imgs - media_mean['Images'], intern - media_mean['Internal'], extern - media_mean['External']]
+                'Delta': [user_data['images'] - media_mean['Images'], user_data['internal'] - media_mean['Internal'], user_data['external'] - media_mean['External']]
             })
             sections.append(('Comparative de votre page', comp_df))
         for title, df in sections:
             html += f'<h2>{title}</h2>' + df.to_html(index=False)
         html += '</body></html>'
-        try:
-            pdf = pdfkit.from_string(html, False)
-            st.download_button(
-                '📥 Télécharger PDF complet',
-                data=pdf,
-                file_name='rapport_semantic_analyzer.pdf',
-                mime='application/pdf'
-            )
-        except OSError:
-            st.warning('wKshtmltopdf non trouvé : installez wkhtmltopdf pour activer l\'export PDF.')
+        pdf = pdfkit.from_string(html, False, configuration=PDFKIT_CONFIG)
+        st.download_button('📥 Télécharger PDF complet', data=pdf, file_name='rapport_semantic_analyzer.pdf', mime='application/pdf')
     else:
-        st.warning('Pour exporter en PDF, installez pdfkit et wkhtmltopdf.')
+        st.warning("Pour exporter en PDF, installez wkhtmltopdf et assurez-vous qu'il est dans le PATH de l'environnement.")
 
 if __name__ == '__main__':
-    run()
     run()
