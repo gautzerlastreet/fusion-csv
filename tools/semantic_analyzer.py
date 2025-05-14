@@ -135,14 +135,16 @@ def run():
             counts = X_array[:, i]
             total_occurrence = counts.sum()
             doc_count = (counts > 0).sum()
-            if is_relevant_expression(expr) and (doc_count / total_docs) >= 0.2:
+            if is_relevant_expression(expr) and (doc_count / total_docs) >= 0.4:
                 moyenne = round(total_occurrence / total_docs, 2)
                 min_occur = counts.min()
                 max_occur = counts.max()
                 moyenne_fmt = f"{moyenne} ({max_occur}-{min_occur})"
-                couverture = f"{round((doc_count / total_docs) * 100)}%"
-                data.append((expr, moyenne_fmt, couverture))
+                couverture = round((doc_count / total_docs) * 100)
+                total_words = sum([word_counts[u] for u in valid_urls])
+                densite = round((total_occurrence / total_words) * 100, 2)
+                data.append((expr, moyenne_fmt, f"{couverture}%", f"{densite}%"))
 
-        df_final = pd.DataFrame(data, columns=["Expression", "Moyenne par contenu", "% Présence"])
+        df_final = pd.DataFrame(data, columns=["Expression", "Moyenne par contenu", "% Présence", "Densité moyenne"])
         df_final = df_final.sort_values(by=["% Présence", "Moyenne par contenu"], ascending=[False, False]).reset_index(drop=True)
         st.dataframe(df_final, use_container_width=True)
