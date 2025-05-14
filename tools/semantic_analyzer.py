@@ -9,8 +9,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import nltk
 from nltk.corpus import stopwords
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from rake_nltk import Rake
+from sklearn.feature_extraction.text import CountVectorizer
 import textstat
 from typing import List, Tuple, Dict
 
@@ -36,19 +35,17 @@ MULTI_SPACE_PATTERN = re.compile(r"\s+")
 @st.cache_resource
 def download_nltk_resources() -> None:
     """Télécharge punkt et stopwords si manquants."""
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except LookupError:
-        nltk.download('punkt')
-    try:
-        nltk.data.find('corpora/stopwords')
-    except LookupError:
-        nltk.download('stopwords')
+    for res in ['punkt', 'stopwords']:
+        try:
+            nltk.data.find(f"tokenizers/{res}" if res=='punkt' else f"corpora/{res}")
+        except LookupError:
+            nltk.download(res)
 
 download_nltk_resources()
 
 # --- Liste d'expressions à exclure ---
 EXCLUDED_EXPRESSIONS = {
+    # (liste inchangée)
     "bonjour", "merci", "au revoir", "salut", "bienvenue", "félicitations", "bravo",
     "cookies", "données personnelles", "caractère personnel", "protection des données", "mentions légales",
     "charte d’utilisation", "politique de confidentialité", "gérer les cookies", "stockées ou extraites",
@@ -72,20 +69,19 @@ def is_relevant_expression(expr: str) -> bool:
     """Vérifie que l'expression contient au moins 2 mots et aucune exclusion."""
     if not isinstance(expr, str):
         return False
-    expr_l = expr.lower()
-    if len(expr_l.split()) < 2:
+    parts = expr.lower().split()
+    if len(parts) < 2:
         return False
-    return all(excl not in expr_l for excl in EXCLUDED_EXPRESSIONS)
+    return all(excl not in expr.lower() for excl in EXCLUDED_EXPRESSIONS)
 
 @st.cache_data(ttl=3600)
-def extract_content_from_url(url: str) -> Tuple[str, str, str, List[str], List[str]]:
+def extract_content_from_url(url: str) -> Tuple[str, str, str, List[str]]:
     """
     Récupère depuis URL :
       - raw text des <p>,
       - <title>,
       - premier <h1>,
-      - liste des <h2>,
-      - liste des <h3>.
+      - liste des sous-titres H2/H3 (ordre d'apparition).
     """
     try:
         resp = session.get(url, timeout=10)
@@ -93,210 +89,134 @@ def extract_content_from_url(url: str) -> Tuple[str, str, str, List[str], List[s
         soup = BeautifulSoup(resp.text, 'html.parser')
         body = soup.body or soup
 
-        for tag in body(['script', 'style', 'nav', 'footer', 'header', 'form', 'table']):
+        # nettoyage
+        for tag in body(['script','style','nav','footer','header','form','table']):
             tag.decompose()
 
-        raw_paras, h2s, h3s = [], [], []
-        title = soup.title.string.strip() if soup.title and soup.title.string else ""
-        h1 = ""
-        for tag in body.find_all(['h1', 'h2', 'h3', 'p']):
+        raw_paras = []
+        title = soup.title.string.strip() if soup.title and soup.title.string else ''
+        h1 = ''
+        subsections = []
+        # Parcours ordonné
+        for tag in body.find_all(['h1','h2','h3','p']):
             txt = tag.get_text(' ', strip=True)
             if tag.name == 'h1' and not h1:
                 h1 = txt
-            elif tag.name == 'h2':
-                h2s.append(txt)
-            elif tag.name == 'h3':
-                h3s.append(txt)
-            else:
+            elif tag.name in ['h2','h3']:
+                subsections.append(f"{tag.name.upper()}: {txt}")
+            elif tag.name == 'p':
                 raw_paras.append(txt)
+
         raw = ' '.join(raw_paras)
         cleaned = clean_text(raw)
-        return raw, title, h1, h2s, h3s
+        return raw, title, h1, subsections
     except Exception as e:
-        logger.error(f"Erreur de récupération {url}: {e}")
-        return "", "", "", [], []
+        logger.error(f"Erreur récupération {url}: {e}")
+        return '', '', '', []
 
 
-def extract_rake_keywords(text: str, max_keywords: int = 10) -> List[Tuple[str, float]]:
-    """
-    Extrait les mots-clés RAKE et leurs scores.
-    On utilise un découpage de phrases simple via regex pour éviter l’erreur punkt_tab.
-    """
-    rake = Rake()
-    rake._tokenize_text_to_sentences = lambda txt: re.split(r'[.?!]\s+', txt)
-    rake.extract_keywords_from_text(text)
-    return rake.get_ranked_phrases_with_scores()[:max_keywords]
-
-
-def get_readability_scores(text: str) -> Dict[str, float]:
-    """Calcule Flesch, Kincaid et Gunning Fog."""
-    return {
-        'flesch_reading_ease': textstat.flesch_reading_ease(text),
-        'flesch_kincaid_grade': textstat.flesch_kincaid_grade(text),
-        'gunning_fog': textstat.gunning_fog(text)
-    }
+def get_readability_scores(text: str) -> Dict[str, int]:
+    """Calcule et arrondit les métriques de lisibilité."""
+    ease = textstat.flesch_reading_ease(text)
+    grade = textstat.flesch_kincaid_grade(text)
+    fog = textstat.gunning_fog(text)
+    return {'Flesch Ease': int(round(ease)), 'Kincaid Grade': int(round(grade)), 'Gunning Fog': int(round(fog))}
 
 
 def run() -> None:
+    st.set_page_config(page_title='Semantic Analyzer', layout='wide')
     st.title('🔍 Semantic Analyzer')
-    st.markdown(
-        '''
-        Comparez plusieurs pages pour extraire des expressions dominantes,
-        repérer des opportunités de contenu et évaluer la pertinence SEO.
-        '''
-    )
 
     urls_input = st.text_area('Entrez les URLs (une par ligne)', height=150)
-    language = st.selectbox('Langue du contenu', ['french', 'english'])
+    language = st.selectbox('Langue', ['french','english'])
 
     if st.button('Analyser les contenus'):
-        urls = [
-            u.strip() if u.startswith(('http://', 'https://')) else f'https://{u.strip()}'
-            for u in urls_input.splitlines() if u.strip()
-        ]
-        if len(urls) < 2:
-            st.error('Veuillez fournir au moins 2 URLs.')
+        urls = [u.strip() if u.startswith(('http://','https://')) else f"https://{u.strip()}"
+                for u in urls_input.splitlines() if u.strip()]
+        if len(urls)<2:
+            st.error('Au moins 2 URLs requises.')
             return
 
-        # 1) Scraping parallèle
+        # scraping parallèle
         progress = st.progress(0)
-        results: Dict[str, Dict] = {}
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(extract_content_from_url, url): url for url in urls}
-            for i, fut in enumerate(as_completed(futures)):
-                url = futures[fut]
-                raw, title, h1, h2s, h3s = fut.result()
-                if raw and len(raw) > 100:
-                    results[url] = {'raw': raw, 'title': title, 'h1': h1, 'h2s': h2s, 'h3s': h3s}
+        results = {}
+        with ThreadPoolExecutor(max_workers=5) as execu:
+            futures = {execu.submit(extract_content_from_url,u):u for u in urls}
+            for i,f in enumerate(as_completed(futures)):
+                u = futures[f]
+                raw,title,h1,subsecs = f.result()
+                if raw and len(raw)>100:
+                    results[u] = {'raw':raw,'title':title,'h1':h1,'subsecs':subsecs}
                 else:
-                    st.warning(f"Contenu insuffisant : {url}")
-                progress.progress((i + 1) / len(urls))
-
-        if len(results) < 2:
-            st.error('Pas assez de contenus validés.')
+                    st.warning(f"Contenu insuffisant: {u}")
+                progress.progress((i+1)/len(urls))
+        if len(results)<2:
+            st.error('Pas assez de contenus valides.')
             return
 
-        # 2) Statistiques de base + moyenne/médiane
-        df_stats = pd.DataFrame([
-            {'URL': u, 'Word Count': len(clean_text(data['raw']).split())}
-            for u, data in results.items()
-        ])
-        median_wc = int(df_stats['Word Count'].median())
-        mean_wc = int(df_stats['Word Count'].mean())
-        st.info(f'💡 Nombre de mots médian attendu : {median_wc} | Nombre de mots moyen attendu : {mean_wc}')
+        # stats de base
+        df_stats = pd.DataFrame([{'URL':u,'Word Count':len(clean_text(v['raw']).split())}
+                                 for u,v in results.items()])
+        median_wc,mean_wc = int(df_stats['Word Count'].median()),int(df_stats['Word Count'].mean())
+        st.info(f"💡 Médiane: {median_wc} mots | Moyenne: {mean_wc} mots")
         st.subheader('📊 Nombre de mots par URL')
-        st.dataframe(df_stats, use_container_width=True)
+        st.dataframe(df_stats,use_container_width=True)
 
-        # Structure des pages
-        df_struct = pd.DataFrame([
-            {
-                'URL': u,
-                'Title': data['title'],
-                'H1': data['h1'],
-                'H2': '; '.join(data['h2s']),
-                'H3': '; '.join(data['h3s'])
-            }
-            for u, data in results.items()
-        ])
-        st.subheader('🗂️ Structure des pages')
-        st.dataframe(df_struct, use_container_width=True)
+        # structure Hn
+        df_struct = pd.DataFrame([{
+            'URL':u,
+            'Title':v['title'],
+            'H1':v['h1'],
+            'Structure':'; '.join(v['subsecs'])
+        } for u,v in results.items()])
+        st.subheader('🗂️ Structure hiérarchique')
+        st.dataframe(df_struct,use_container_width=True)
 
-        docs = [clean_text(data['raw']) for data in results.values()]
-        word_counts = df_stats['Word Count'].values
-        stop_words = stopwords.words(language)
-
-        # 3) CountVectorizer
+        # Expressions clés
         st.markdown(
             '''
             **Expressions clés (CountVectorizer)**  
-            *Expression* : phrase extraite.  
-            *Mean Count* : occurrence moyenne par document.  
-            *Doc Coverage* : pourcentage de documents contenant l'expression.  
-            *Density* : densité moyenne dans le contenu (en pourcentage).  
+            *Expression*: phrase extraite  
+            *Mean Count*: occurrences moyennes  
+            *Doc Coverage*: % documents contenant  
+            *Density*: % densité dans le texte
             '''
         )
-        cv = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words)
-        X = cv.fit_transform(docs)
-        terms = cv.get_feature_names_out()
-        coverage = np.array((X > 0).sum(axis=0)).ravel() / len(docs) * 100
-        mask = coverage >= 40  # seuil 40%
-
-        data_cv = []
-        for term in terms[mask]:
-            if is_relevant_expression(term):
-                counts = X[:, cv.vocabulary_[term]].toarray().flatten()
-                data_cv.append({
-                    'Expression': term,
-                    'Mean Count': int(round(np.mean(counts))),
-                    'Doc Coverage (%)': int(round(coverage[cv.vocabulary_[term]])),
-                    'Density (%)': int(round(np.mean(counts / word_counts * 100)))
-                })
-        df_cv = pd.DataFrame(data_cv).sort_values(['Doc Coverage (%)', 'Density (%)'], ascending=False)
+        docs=[clean_text(v['raw']) for v in results.values()]
+        wcs=df_stats['Word Count'].values
+        stopw=stopwords.words(language)
+        cv=CountVectorizer(ngram_range=(2,4),stop_words=stopw)
+        X=cv.fit_transform(docs)
+        terms=cv.get_feature_names_out()
+        cov=(X>0).sum(axis=0).A1/len(docs)*100
+        mask=cov>=40
+        rows=[]
+        for t in terms[mask][:40]:
+            cts=X[:,cv.vocabulary_[t]].toarray().ravel()
+            if is_relevant_expression(t): rows.append({
+                'Expression':t,
+                'Mean Count':int(round(cts.mean())),
+                'Doc Coverage (%)':int(round(cov[cv.vocabulary_[t]])),
+                'Density (%)':int(round((cts/wcs*100).mean()))
+            })
+        df_cv=pd.DataFrame(rows).sort_values(['Doc Coverage (%)','Density (%)'],ascending=False)
         st.table(df_cv)
 
-        # 4) TF-IDF
-        st.markdown(
-            '''
-            **Top 20 TF-IDF**  
-            *Expression* : phrase extraite.  
-            *Avg TF-IDF* : score TF-IDF moyen sur les docs (sans unité).  
-            '''
-        )
-        tfidf = TfidfVectorizer(ngram_range=(2, 4), stop_words=stop_words)
-        Xtf = tfidf.fit_transform(docs)
-        tf_terms = tfidf.get_feature_names_out()
-        tf_scores = np.asarray(Xtf.mean(axis=0)).flatten()
-        top_idx = np.argsort(tf_scores)[::-1][:20]
-        df_tfidf = pd.DataFrame({
-            'Expression': tf_terms[top_idx],
-            'Avg TF-IDF': [round(score, 2) for score in tf_scores[top_idx]]
-        })
-        st.table(df_tfidf)
-
-        # 5) RAKE Keywords
-        st.markdown(
-            '''
-            **RAKE Keywords**  
-            RAKE (Rapid Automatic Keyword Extraction) identifie des phrases clés significatives.  
-            *Keyword* : phrase extraite.  
-            *Score* : poids RAKE (score entier, plus élevé = plus pertinent).  
-            '''
-        )
-        rake_rows = []
-        for u, data in results.items():
-            for phrase, score in extract_rake_keywords(data['raw']):
-                rake_rows.append({
-                    'URL': u,
-                    'Keyword': phrase,
-                    'Score': int(round(score))
-                })
-        df_rake = pd.DataFrame(rake_rows)
-        st.table(df_rake)
-
-        # 6) Readability Metrics
+        # readability
         st.markdown(
             '''
             **Readability Metrics**  
-            *Flesch Reading Ease* : plus élevé = plus facile à lire.  
-            *Flesch-Kincaid Grade* : niveau scolaire approximatif.  
-            *Gunning Fog* : indice de complexité (plus élevé = plus complexe).  
+            *Flesch Ease*: plus élevé = plus facile  
+            *Kincaid Grade*: niveau scolaire approximatif  
+            *Gunning Fog*: plus élevé = plus complexe
             '''
         )
-        read_rows = []
-        for u, data in results.items():
-            scores = get_readability_scores(data['raw'])
-            read_rows.append({
-                'URL': u,
-                'Flesch Ease': int(round(scores['flesch_reading_ease'])),
-                'Kincaid Grade': int(round(scores['flesch_kincaid_grade'])),
-                'Gunning Fog': int(round(scores['gunning_fog']))
-            })
-        df_read = pd.DataFrame(read_rows)
+        read=[{'URL':u,**get_readability_scores(v['raw'])} for u,v in results.items()]
+        df_read=pd.DataFrame(read)
         st.table(df_read)
 
-        # 7) Export CSV
-        st.download_button('Télécharger stats CSV', df_stats.to_csv(index=False), file_name='stats.csv')
-        st.download_button('Télécharger CV CSV', df_cv.to_csv(index=False), file_name='countvectorizer.csv')
-        st.download_button('Télécharger TF-IDF CSV', df_tfidf.to_csv(index=False), file_name='tfidf.csv')
-        st.download_button('Télécharger RAKE CSV', df_rake.to_csv(index=False), file_name='rake.csv')
-        st.download_button('Télécharger Readability CSV', df_read.to_csv(index=False), file_name='readability.csv')
+        # export CSV
+        st.download_button('Stats CSV',df_stats.to_csv(index=False),file_name='stats.csv')
+        st.download_button('Struct CSV',df_struct.to_csv(index=False),file_name='structure.csv')
+        st.download_button('CountVectorizer CSV',df_cv.to_csv(index=False),file_name='cv.csv')
+        st.download_button('Readability CSV',df_read.to_csv(index=False),file_name='readability.csv')
