@@ -1,5 +1,6 @@
 import streamlit as st
 
+
 def run():
     import pandas as pd
     import requests
@@ -20,6 +21,7 @@ def run():
             nltk.data.find('corpora/stopwords')
         except LookupError:
             nltk.download('stopwords')
+
     download_nltk_resources()
 
     EXCLUDED_EXPRESSIONS = set([
@@ -125,16 +127,21 @@ def run():
         vec = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words, max_features=3000)
         X = vec.fit_transform(cleaned_texts)
         features = vec.get_feature_names_out()
-        presence = (X > 0).sum(axis=0).A1
-        sums = X.sum(axis=0).A1
+        X_array = X.toarray()
         total_docs = len(valid_urls)
 
         data = []
-        for expr, total_occurrence, doc_count in zip(features, sums, presence):
+        for i, expr in enumerate(features):
+            counts = X_array[:, i]
+            total_occurrence = counts.sum()
+            doc_count = (counts > 0).sum()
             if is_relevant_expression(expr) and (doc_count / total_docs) >= 0.2:
                 moyenne = round(total_occurrence / total_docs, 2)
+                min_occur = counts.min()
+                max_occur = counts.max()
+                moyenne_fmt = f"{moyenne} ({max_occur}-{min_occur})"
                 couverture = f"{round((doc_count / total_docs) * 100)}%"
-                data.append((expr, moyenne, couverture))
+                data.append((expr, moyenne_fmt, couverture))
 
         df_final = pd.DataFrame(data, columns=["Expression", "Moyenne par contenu", "% Présence"])
         df_final = df_final.sort_values(by=["% Présence", "Moyenne par contenu"], ascending=[False, False]).reset_index(drop=True)
