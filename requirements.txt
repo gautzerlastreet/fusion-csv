@@ -10,3 +10,4 @@ plotly
 streamlit
 rake-nltk
 textstat
+openpyxl
