@@ -1,9 +1,9 @@
-streamlit
+streamlit==1.45.1
 pandas
-scikit-learn
 beautifulsoup4
 requests
-plotly
-nltk
+scikit-learn
 matplotlib
 seaborn
+nltk
+plotly
