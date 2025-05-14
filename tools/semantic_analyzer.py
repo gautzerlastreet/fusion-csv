@@ -1,3 +1,5 @@
+# tools/semantic_analyzer.py
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -46,7 +48,7 @@ def download_nltk_resources() -> None:
 
 download_nltk_resources()
 
-# --- Liste d'expressions à exclure (ta configuration d’origine) ---
+# --- Liste d'expressions à exclure (ta config) ---
 EXCLUDED_EXPRESSIONS = {
     "bonjour", "merci", "au revoir", "salut", "bienvenue", "félicitations", "bravo",
     "cookies", "données personnelles", "caractère personnel", "protection des données", "mentions légales",
@@ -56,7 +58,7 @@ EXCLUDED_EXPRESSIONS = {
     "newsletter", "rien à voir", "afin de", "valider votre inscription", "accéder au contenu",
     "page d’accueil", "prénom ou pseudo", "google llc", "envoyer des publicités", "adresse ip", "site", "email",
     "er", "css", "script", "footer", "header", "service client", "service spécifique"
-}  # :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
+}
 
 def clean_text(text: str) -> str:
     """Nettoie le texte : minuscules, suppression ponctuation, chiffres, espaces."""
@@ -188,17 +190,22 @@ def run() -> None:
         cv = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words)
         X = cv.fit_transform(docs)
         terms = cv.get_feature_names_out()
-        mask = (X > 0).sum(axis=0) / len(docs) >= 0.4  # seuil 40%
+
+        # CALCUL DE LA COUVERTURE AVEC RAVEL POUR OBTENIR UN VECTEUR 1-D
+        coverage = np.array((X > 0).sum(axis=0)).ravel() / len(docs)
+        mask = coverage >= 0.4  # seuil 40%
+
         data_cv = []
         for term in terms[mask]:
+            counts = X[:, cv.vocabulary_[term]].toarray().flatten()
             if is_relevant_expression(term):
-                counts = X[:, cv.vocabulary_[term]].toarray().flatten()
                 data_cv.append({
                     'Expression': term,
                     'Mean Count': np.mean(counts),
-                    'Doc Coverage': np.mean(counts > 0),
+                    'Doc Coverage': coverage[cv.vocabulary_[term]],
                     'Density': np.mean(counts / word_counts)
                 })
+
         df_cv = pd.DataFrame(data_cv).sort_values(
             ['Doc Coverage', 'Density'], ascending=False
         )
@@ -237,7 +244,7 @@ def run() -> None:
         st.subheader("📖 Readability Metrics")
         st.dataframe(df_read, use_container_width=True)
 
-        # 7) Export
+        # 7) Exports
         st.download_button(
             "Télécharger stats CSV",
             df_stats.to_csv(index=False),
