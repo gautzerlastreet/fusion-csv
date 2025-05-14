@@ -150,19 +150,26 @@ def run() -> None:
     c1.metric('Médiane mots',median_wc)
     c2.metric('Moyenne mots',mean_wc)
 
-    # Affichage
-    with st.expander('📊 Nombre de mots par URL',expanded=True):
-        # Align text columns left and numbers center
-        sty = df_stats.style.format({'Word Count':'{:.0f}'}) \
+        # Tableau fusionné: Structure + Nombre de mots
+    df_comb = pd.DataFrame([{
+        'URL': u,
+        'Word Count': len(clean_text(v['raw']).split()),
+        'Title': v['title'],
+        'H1': v['h1'],
+        'Structure': ' | '.join(v['subsecs'])
+    } for u,v in results.items()])
+    with st.expander('🗂️ Structure & Stats', expanded=True):
+        st.write('Combinaison de la structure Hn et du nombre de mots pour chaque URL.')
+        sty_comb = df_comb.style \
             .set_table_styles([
-                {'selector': 'th', 'props': [('text-align', 'center')]}
+                {'selector': 'th', 'props': [('text-align', 'center')]},
+                {'selector': 'td', 'props': [('white-space', 'normal')]}
             ]) \
-            .set_properties(subset=['URL'], **{'text-align':'left'}) \
-            .set_properties(subset=['Word Count'], **{'text-align':'center'})
-        st.dataframe(sty, use_container_width=True)
-    with st.expander('🗂️ Structure hiérarchique',expanded=False):
-        st.write('Title et H1, puis sous-titres H2/H3:')
-        st.write(df_struct.to_html(escape=False),unsafe_allow_html=True)
+            .set_properties(subset=['URL','Title','H1','Structure'], **{'text-align':'left', 'width':'250px'}) \
+            .set_properties(subset=['Word Count'], **{'text-align':'center', 'width':'80px'})
+        st.dataframe(sty_comb, use_container_width=True)
+
+    # Expressions clés
     with st.expander('🧩 Expressions clés',expanded=True):
         st.markdown('_Expression | Mean Count | Doc Coverage (%) | Density (%)_')
         docs=[clean_text(v['raw']) for v in results.values()]
@@ -179,13 +186,28 @@ def run() -> None:
             if is_relevant_expression(t):
                 rows.append({'Expression':t,'Mean Count':int(cts.mean()),'Doc Coverage (%)':int(cov[cv.vocabulary_[t]]),'Density (%)':int((cts/wcs*100).mean())})
         df_cv=pd.DataFrame(rows).sort_values(['Doc Coverage (%)','Density (%)'],ascending=False)
-        st.dataframe(df_cv,use_container_width=True)
+        sty_cv = df_cv.style \
+            .set_table_styles([{'selector':'th','props':[('text-align','center')]}, {'selector':'td','props':[('white-space','normal')]}]) \
+            .set_properties(subset=['Expression'], **{'text-align':'left', 'width':'200px'}) \
+            .set_properties(subset=['Mean Count','Doc Coverage (%)','Density (%)'], **{'text-align':'center', 'width':'80px'})
+        st.dataframe(sty_cv, use_container_width=True)
+
+    # Readability Metrics
     with st.expander('📖 Readability Metrics',expanded=False):
         st.markdown('_Flesch Ease_: + facile = + élevé<br>_Kincaid Grade_: niveau scolaire<br>_Gunning Fog_: + complexe = + élevé',unsafe_allow_html=True)
         read=[{'URL':u,**get_readability_scores(v['raw'])} for u,v in results.items()]
-        st.dataframe(pd.DataFrame(read),use_container_width=True)
+        df_read=pd.DataFrame(read)
+        sty_read = df_read.style \
+            .set_table_styles([{'selector':'th','props':[('text-align','center')]}, {'selector':'td','props':[('white-space','normal')]}]) \
+            .set_properties(subset=['URL'], **{'text-align':'left', 'width':'250px'}) \
+            .set_properties(subset=['Flesch Ease','Kincaid Grade','Gunning Fog'], **{'text-align':'center', 'width':'80px'})
+        st.dataframe(sty_read, use_container_width=True)
 
     # Export
+    st.download_button('📥 Stats CSV',df_stats.to_csv(index=False),file_name='stats.csv')
+    st.download_button('📥 Struct CSV',df_comb.to_csv(index=False),file_name='structure_stats.csv')
+    st.download_button('📥 Expr CSV',df_cv.to_csv(index=False),file_name='expressions.csv')
+    st.download_button('📥 Read CSV',pd.DataFrame(read).to_csv(index=False),file_name='readability.csv')
     st.download_button('📥 Stats CSV',df_stats.to_csv(index=False),file_name='stats.csv')
     st.download_button('📥 Struct CSV',df_struct.to_csv(index=False),file_name='structure.csv')
     st.download_button('📥 Expr CSV',df_cv.to_csv(index=False),file_name='expressions.csv')
