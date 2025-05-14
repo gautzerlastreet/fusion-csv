@@ -72,9 +72,9 @@ def run():
                 if tag.name == 'h1' and not h1:
                     h1 = tag.get_text(" ", strip=True)
                 elif tag.name == 'h2':
-                    h2_tags.append(tag.get_text(" ", strip=True))
+                    h2_tags.append("H2: " + tag.get_text(" ", strip=True))
                 elif tag.name == 'h3':
-                    h3_tags.append(tag.get_text(" ", strip=True))
+                    h3_tags.append("H3: " + tag.get_text(" ", strip=True))
                 elif tag.name == 'p':
                     content.append(tag.get_text(" ", strip=True))
             return re.sub(r'\s+', ' ', " ".join(content)), title, h1, h2_tags, h3_tags
@@ -110,7 +110,7 @@ def run():
                 texts.append(content)
                 valid_urls.append(url)
                 word_counts[url] = len(content.split())
-                structure = "\n".join([f"H2: {h2}" for h2 in h2s] + [f"H3: {h3}" for h3 in h3s])
+                structure = "\n".join(h2s + h3s)
                 structure_rows.append([url, title, h1, structure])
             else:
                 st.warning(f"Contenu insuffisant ou vide : {url}")
