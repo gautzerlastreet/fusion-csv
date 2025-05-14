@@ -120,18 +120,6 @@ def main_tab():
         st.bar_chart(chart_df2)
 
     # Affichage du DataFrame
-    chart_df1 = pd.DataFrame({
-        "Type": ["Primaires", "Secondaires"],
-        "Nombre": [total_primary, total_secondary]
-    }).set_index("Type")
-    st.bar_chart(chart_df1)
-    chart_df2 = pd.DataFrame({
-        "Type": ["Primaires", "Secondaires"],
-        "Volume": [total_vol_primary, total_vol_secondary]
-    }).set_index("Type")
-    st.bar_chart(chart_df2)
-
-    # Affichage du DataFrame
     st.dataframe(df_final, use_container_width=True)
 
     # Téléchargement
