@@ -56,29 +56,7 @@ def run():
             st.error(f"Erreur lors de l'extraction de {url}: {str(e)}")
             return ""
 
-    EXCLUDED_EXPRESSIONS = set([
-        "er", "bonjour", "merci", "cookies", "données personnelles", "caractère personnel",
-        "protection des données", "mentions légales", "charte d’utilisation", "politique de confidentialité",
-        "gérer les cookies", "gestion des cookies", "stockées ou extraites", "consentement aux cookies",
-        "retirer son consentement", "finalités statistiques anonymes", "finalités marketing similaires",
-        "page d’accueil", "accéder au contenu", "aller au contenu", "menu", "top of page", "bottom of page",
-        "skip to content", "passer au contenu", "tab to navigate", "to navigate through", "the menu items",
-        "site web", "plan du site", "liens utiles", "voir la suite", "continuer sans accepter", "savoir plus",
-        "lire la suite", "email", "mot de passe", "utilisateur", "utilisateurs", "site", "réseaux sociaux",
-        "navigateur", "adresse IP", "google llc", "envoyer des publicités", "stocker des préférences",
-        "service client", "service spécifique explicitement", "spécifique explicitement demandé", "rien à voir",
-        "afin d’envoyer", "afin d’éviter", "raison pour laquelle", "mis à jour", "excellent chien", "prendre soin",
-        "blog", "newsletter", "avis", "guide d’achat", "nouvelles fonctionnalités", "partagez votre expérience",
-        "offre du moment", "laisser un commentaire", "prénom ou pseudo", "prendre rdv", "rendez-vous en ligne",
-        "formulaire de contact", "accès à internet", "créer des profils", "annuler la réponse",
-        "enregistrer les préférences", "auvergne", "cournon-d’auvergne", "rue andré theuriet",
-        "rue des cordeliers", "rue morel ladeuil", "point da cruz",
-        "consultez d’abord votre médecin", "ce site utilise des cookies", "en savoir plus sur nos services",
-        "les champs obligatoires sont indiqués", "accéder à votre espace personnel",
-        "offrir les meilleures expériences", "afin de vous garantir", "nous utilisons des cookies pour",
-        "valider votre inscription", "consultez nos mentions légales", "nous utilisons des technologies",
-        "ce site a été édité par", "prendre connaissance de notre politique", "facebook" 
-    ])
+    EXCLUDED_EXPRESSIONS = set([...])  # mêmes données que précédemment
 
     def is_relevant_expression(expr):
         if expr in EXCLUDED_EXPRESSIONS:
@@ -88,6 +66,16 @@ def run():
         if len(expr.split()) == 1:
             return False
         return True
+
+    def deduplicate_ngrams(ngrams):
+        deduped = []
+        seen = set()
+        for expr, count in sorted(ngrams, key=lambda x: (-len(x[0].split()), -x[1])):
+            words = tuple(expr.split())
+            if not any(set(words).issubset(set(existing.split())) for existing, _ in deduped):
+                deduped.append((expr, count))
+                seen.add(expr)
+        return deduped
 
     st.title("🔍 Semantic Analyzer")
     st.markdown("""
@@ -145,8 +133,8 @@ def run():
         sum_words = ngram_matrix.sum(axis=0)
         ngram_freq = [(word, int(sum_words[0, idx])) for word, idx in ngram_vectorizer.vocabulary_.items()]
         ngram_freq_filtered = [(word, freq) for word, freq in ngram_freq if is_relevant_expression(word)]
-        ngram_freq_sorted = sorted(ngram_freq_filtered, key=lambda x: x[1], reverse=True)
-        avg_per_doc = [(ng, freq, round(freq / len(valid_urls), 2)) for ng, freq in ngram_freq_sorted[:30]]
+        ngram_freq_deduped = deduplicate_ngrams(ngram_freq_filtered)
+        avg_per_doc = [(ng, freq, round(freq / len(valid_urls), 2)) for ng, freq in ngram_freq_deduped[:30]]
         df_ngrams = pd.DataFrame(avg_per_doc, columns=["Expression", "Occurrences totales", "Occurrences moyennes"])
         st.dataframe(df_ngrams, use_container_width=True)
 
@@ -162,9 +150,10 @@ def run():
                 st.markdown(f"**{url.split('//')[1][:30]}...**")
                 scores = dict(zip(feature_names, vec))
                 sorted_kws = [(k, v) for k, v in scores.items() if is_relevant_expression(k)]
-                sorted_kws = sorted(sorted_kws, key=lambda x: x[1], reverse=True)[:10]
-                if sorted_kws:
-                    kw_df = pd.DataFrame(sorted_kws, columns=["Expression", "Score"])
+                sorted_kws = sorted(sorted_kws, key=lambda x: x[1], reverse=True)
+                deduped = deduplicate_ngrams(sorted_kws)[:10]
+                if deduped:
+                    kw_df = pd.DataFrame(deduped, columns=["Expression", "Score"])
                     st.dataframe(kw_df, use_container_width=True)
                 else:
                     st.write("Aucune expression significative trouvée.")
