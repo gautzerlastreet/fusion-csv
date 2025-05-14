@@ -200,15 +200,29 @@ def run():
                 df_media[col] = 0
         media_mean = df_media[['images', 'internal', 'external']].mean().round().astype(int)
         imgs, intern, extern = user_data['images'], user_data['internal'], user_data['external']
-        st.metric('Images (vous)', imgs, delta=imgs - media_mean['images'])
-        st.metric('Liens internes (vous)', intern, delta=intern - media_mean['internal'])
-        st.metric('Liens externes (vous)', extern, delta=extern - media_mean['external'])
+        try:
+            st.metric('Images (vous)', imgs, delta=int(imgs - media_mean['images']))
+        except:
+            st.metric('Images (vous)', imgs)
+        try:
+            st.metric('Liens internes (vous)', intern, delta=int(intern - media_mean['internal']))
+        except:
+            st.metric('Liens internes (vous)', intern)
+        try:
+            st.metric('Liens externes (vous)', extern, delta=int(extern - media_mean['external']))
+        except:
+            st.metric('Liens externes (vous)', extern)
 
         ur = get_readability_scores(user_data['raw'])
         mean_read = df_read.mean(numeric_only=True).round().astype(int)
-        st.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=ur['Flesch Ease'] - mean_read['Flesch Ease'])
-        st.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=ur['Kincaid Grade'] - mean_read['Kincaid Grade'])
-        st.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=ur['Gunning Fog'] - mean_read['Gunning Fog'])
+        try:
+            st.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=int(ur['Flesch Ease'] - mean_read['Flesch Ease']))
+            st.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=int(ur['Kincaid Grade'] - mean_read['Kincaid Grade']))
+            st.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=int(ur['Gunning Fog'] - mean_read['Gunning Fog']))
+        except:
+            st.metric('Flesch Ease (vous)', ur['Flesch Ease'])
+            st.metric('Kincaid Grade (vous)', ur['Kincaid Grade'])
+            st.metric('Gunning Fog (vous)', ur['Gunning Fog'])
 
     st.download_button('📥 Export CSV Structure & Stats', pd.merge(df_stats, df_struct, on='URL').to_csv(index=False), file_name='structure_stats.csv')
     st.download_button('📥 Export CSV Media & Links', df_media.to_csv(index=False), file_name='media_links.csv')
