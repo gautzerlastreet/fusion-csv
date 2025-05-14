@@ -228,12 +228,8 @@ def run() -> None:
             .set_properties(subset=['Flesch Ease','Kincaid Grade','Gunning Fog'], **{'text-align':'center', 'width':'80px'})
         st.dataframe(sty_read, use_container_width=True)
 
-    # Export
-    st.download_button('📥 Stats CSV',df_stats.to_csv(index=False),file_name='stats.csv')
-    st.download_button('📥 Struct CSV',df_comb.to_csv(index=False),file_name='structure_stats.csv')
-    st.download_button('📥 Expr CSV',df_cv.to_csv(index=False),file_name='expressions.csv')
-    st.download_button('📥 Read CSV',pd.DataFrame(read).to_csv(index=False),file_name='readability.csv')
-    st.download_button('📥 Stats CSV',df_stats.to_csv(index=False),file_name='stats.csv')
-    st.download_button('📥 Struct CSV',df_struct.to_csv(index=False),file_name='structure.csv')
-    st.download_button('📥 Expr CSV',df_cv.to_csv(index=False),file_name='expressions.csv')
-    st.download_button('📥 Read CSV',pd.DataFrame(read).to_csv(index=False),file_name='readability.csv')
+        # Export
+    st.download_button('📥 Stats CSV', df_stats.to_csv(index=False), file_name='stats.csv')
+    st.download_button('📥 Struct CSV', df_comb.to_csv(index=False), file_name='structure_stats.csv')
+    st.download_button('📥 Expr CSV', df_cv.to_csv(index=False), file_name='expressions.csv')
+    st.download_button('📥 Readability CSV', pd.DataFrame(read).to_csv(index=False), file_name='readability.csv')
