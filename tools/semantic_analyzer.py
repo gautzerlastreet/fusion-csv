@@ -56,6 +56,7 @@ EXCLUDED_EXPRESSIONS = {
 }
 
 # --- Utility Functions ---
+
 def clean_text(text: str) -> str:
     txt = text.lower()
     txt = PUNCT_PATTERN.sub(' ', txt)
@@ -123,6 +124,7 @@ def get_readability_scores(text: str) -> Dict[str,int]:
     }
 
 # --- Main Streamlit App ---
+
 def run() -> None:
     st.title('🔍 Semantic Analyzer')
     st.markdown('**Comparez plusieurs pages et comparez-les à votre page**')
@@ -187,6 +189,7 @@ def run() -> None:
         st.dataframe(df_media, use_container_width=True)
     with st.expander('🧩 Expressions clés', expanded=False):
         st.dataframe(df_cv, use_container_width=True)
+
     mean_vals = df_read.mean(numeric_only=True).round().astype(int)
     m1, m2, m3 = st.columns(3)
     m1.metric('Moy. Flesch Ease', mean_vals['Flesch Ease'])
@@ -206,16 +209,35 @@ def run() -> None:
     # Comparative Summary if user_url provided (moved after all analyses)
     if user_data:
         st.subheader('🔍 Analyse comparative de votre page')
+
+        # Word Count Comparison
         uwc = len(clean_text(user_data['raw']).split())
         median_wc = int(df_stats['Word Count'].median())
         mean_wc = int(df_stats['Word Count'].mean())
         c1, c2 = st.columns(2)
         c1.metric('Mots (votre page)', uwc, delta=int(uwc - mean_wc))
         c2.metric('Médiane groupe', median_wc)
-        group_terms = set(df_cv['Expression'])
+
+        # Key Expressions Missing (filtered)
+        stopw_terms = df_cv[(df_cv['Mean Count'] > 1) & (df_cv['Coverage (%)'] > 50)]['Expression'].tolist()
         user_text = clean_text(user_data['raw'])
-        missing = [t for t in group_terms if t not in user_text]
-        st.markdown(f"**Mots clés manquants ({len(missing)})**: {', '.join(missing[:10])}{'...' if len(missing)>10 else ''}")
+        missing = [t for t in stopw_terms if t not in user_text]
+        if missing:
+            st.table(pd.DataFrame({'Mots clés manquants': missing}))
+        else:
+            st.write('Aucun mot clé manquant pertinent.')
+
+        # Media & Links Comparison
+        media_mean = df_media[['Images', 'Internal', 'External']].mean().round().astype(int)
+        u_imgs = user_data['images']
+        u_int = user_data['internal']
+        u_ext = user_data['external']
+        m1, m2, m3 = st.columns(3)
+        m1.metric('Images (vous)', u_imgs, delta=int(u_imgs - media_mean['Images']))
+        m2.metric('Liens internes (vous)', u_int, delta=int(u_int - media_mean['Internal']))
+        m3.metric('Liens externes (vous)', u_ext, delta=int(u_ext - media_mean['External']))
+
+        # Readability Comparison
         ur = get_readability_scores(user_data['raw'])
         mean_read = df_read.mean(numeric_only=True).round().astype(int)
         r1, r2, r3 = st.columns(3)
