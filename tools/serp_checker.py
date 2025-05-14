@@ -5,36 +5,42 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 import streamlit as st
 
-# --- USER-AGENT pour éviter le blocage ---
+# --- USER-AGENT et en-têtes pour éviter le blocage et forcer le français ---
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/115.0.0.0 Safari/537.36"
 )
-HEADERS = {"User-Agent": USER_AGENT}
+HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+}
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_google_results(query: str) -> list[dict]:
+    """Scrape les 10 premiers résultats Google pour la requête."""
     url = f"https://www.google.com/search?q={quote_plus(query)}&hl=fr"
     resp = requests.get(url, headers=HEADERS, timeout=5)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     results = []
-    for item in soup.select("div.g")[:10]:
-        a = item.find("a")
-        h3 = item.find("h3")
-        if not (a and h3):
+    # Conteneurs de résultats (nouvelle structure Google)
+    for g in soup.select("div.tF2Cxc")[:10]:
+        link_tag    = g.select_one("div.yuRUbf > a")
+        title_tag   = g.select_one("div.yuRUbf > a > h3")
+        snippet_tag = g.select_one("div.IsZvec") or g.select_one("span.aCOpRe")
+        if not (link_tag and title_tag):
             continue
-        snippet_tag = item.find("div", class_="IsZvec") or item.find("span", class_="aCOpRe")
         results.append({
-            "title": h3.get_text(),
-            "link":  a["href"],
+            "title":   title_tag.get_text(),
+            "link":    link_tag["href"],
             "snippet": snippet_tag.get_text() if snippet_tag else ""
         })
     return results
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_bing_results(query: str) -> list[dict]:
+    """Scrape les 10 premiers résultats Bing pour la requête."""
     url = "https://www.bing.com/search"
     params = {"q": query, "count": 10}
     resp = requests.get(url, headers=HEADERS, params=params, timeout=5)
@@ -54,6 +60,7 @@ def get_bing_results(query: str) -> list[dict]:
     return results
 
 def run():
+    """Point d’entrée Streamlit pour le SERP Checker."""
     st.header("🔍 Comparateur SERP Google vs Bing (sans API)")
     query = st.text_input("Entrez un mot-clé", placeholder="ex. “optimisation SEO Python”")
     if st.button("Lancer la recherche") and query:
