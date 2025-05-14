@@ -33,14 +33,9 @@ PATTERNS = {
 }
 
 EXCLUDED_EXPRESSIONS = {
-    "bonjour","merci","au revoir","salut","bienvenue","félicitations","bravo",
-    "cookies","données personnelles","caractère personnel","protection des données","mentions légales",
-    "charte d’utilisation","politique de confidentialité","gérer les cookies","stockées ou extraites",
-    "gestion des cookies","consentement aux cookies","continuer sans accepter","savoir plus","en savoir plus",
-    "utilisateur","utilisateurs","site web","formulaire de contact","the menu items","avis","blog","guide d’achat",
-    "newsletter","rien à voir","afin de","valider votre inscription","accéder au contenu",
-    "page d’accueil","prénom ou pseudo","google llc","envoyer des publicités","adresse ip","site","email",
-    "er","css","script","footer","header","service client","service spécifique"
+    "bonjour", "merci", "cookies", "données personnelles", "caractère personnel",
+    "site", "email", "newsletter", "utilisateur", "mentions légales", "page d'accueil",
+    "er", "script", "footer", "header"
 }
 
 @st.cache_resource
@@ -200,11 +195,14 @@ def run():
         else:
             st.write('Aucun mot clé manquant pertinent.')
 
-        media_mean = df_media[['Images', 'Internal', 'External']].mean().round().astype(int)
+        for col in ['images', 'internal', 'external']:
+            if col not in df_media.columns:
+                df_media[col] = 0
+        media_mean = df_media[['images', 'internal', 'external']].mean().round().astype(int)
         imgs, intern, extern = user_data['images'], user_data['internal'], user_data['external']
-        st.metric('Images (vous)', imgs, delta=imgs - media_mean['Images'])
-        st.metric('Liens internes (vous)', intern, delta=intern - media_mean['Internal'])
-        st.metric('Liens externes (vous)', extern, delta=extern - media_mean['External'])
+        st.metric('Images (vous)', imgs, delta=imgs - media_mean['images'])
+        st.metric('Liens internes (vous)', intern, delta=intern - media_mean['internal'])
+        st.metric('Liens externes (vous)', extern, delta=extern - media_mean['external'])
 
         ur = get_readability_scores(user_data['raw'])
         mean_read = df_read.mean(numeric_only=True).round().astype(int)
