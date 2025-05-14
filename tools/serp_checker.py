@@ -1,8 +1,8 @@
 # tools/serp_checker.py
 
+import json
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import quote_plus
 import streamlit as st
 
 # --- USER-AGENT et en-têtes pour éviter le blocage et forcer le français ---
@@ -17,28 +17,6 @@ HEADERS = {
 }
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_google_results(query: str) -> list[dict]:
-    """Scrape les 10 premiers résultats Google pour la requête."""
-    url = f"https://www.google.com/search?q={quote_plus(query)}&hl=fr"
-    resp = requests.get(url, headers=HEADERS, timeout=5)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-    results = []
-    # Conteneurs de résultats (nouvelle structure Google)
-    for g in soup.select("div.tF2Cxc")[:10]:
-        link_tag    = g.select_one("div.yuRUbf > a")
-        title_tag   = g.select_one("div.yuRUbf > a > h3")
-        snippet_tag = g.select_one("div.IsZvec") or g.select_one("span.aCOpRe")
-        if not (link_tag and title_tag):
-            continue
-        results.append({
-            "title":   title_tag.get_text(),
-            "link":    link_tag["href"],
-            "snippet": snippet_tag.get_text() if snippet_tag else ""
-        })
-    return results
-
-@st.cache_data(ttl=3600, show_spinner=False)
 def get_bing_results(query: str) -> list[dict]:
     """Scrape les 10 premiers résultats Bing pour la requête."""
     url = "https://www.bing.com/search"
@@ -51,33 +29,53 @@ def get_bing_results(query: str) -> list[dict]:
         h2 = li.find("h2")
         if not h2 or not h2.find("a"):
             continue
-        p = li.find("p")
+        link = h2.find("a")["href"]
+        title = h2.get_text()
+        snippet = li.find("p").get_text() if li.find("p") else ""
         results.append({
-            "title":   h2.get_text(),
-            "link":    h2.find("a")["href"],
-            "snippet": p.get_text() if p else ""
+            "title":   title,
+            "link":    link,
+            "snippet": snippet
         })
     return results
 
 def run():
-    """Point d’entrée Streamlit pour le SERP Checker."""
-    st.header("🔍 Comparateur SERP Google vs Bing (sans API)")
+    """Point d’entrée Streamlit pour le SERP Checker (Bing uniquement)."""
+    st.header("🅱️ Comparateur SERP Bing (sans API ni Google)")
     query = st.text_input("Entrez un mot-clé", placeholder="ex. “optimisation SEO Python”")
     if st.button("Lancer la recherche") and query:
-        with st.spinner("Scraping en cours…"):
-            google = get_google_results(query)
-            bing   = get_bing_results(query)
+        with st.spinner("Scraping Bing en cours…"):
+            bing_results = get_bing_results(query)
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("🔎 Google (10 premiers)")
-            if not google:
-                st.write("Aucun résultat ou blocage du scraping.")
-            for r in google:
-                st.markdown(f"**[{r['title']}]({r['link']})**  \n{r['snippet']}")
-        with col2:
-            st.subheader("🅱️ Bing (10 premiers)")
-            if not bing:
-                st.write("Aucun résultat ou blocage du scraping.")
-            for r in bing:
-                st.markdown(f"**[{r['title']}]({r['link']})**  \n{r['snippet']}")
+        # Affichage des résultats
+        if not bing_results:
+            st.warning("Aucun résultat trouvé ou blocage du scraping Bing.")
+            return
+
+        st.subheader("🅱️ Bing (10 premiers)")
+        for r in bing_results:
+            st.markdown(f"**[{r['title']}]({r['link']})**  \n{r['snippet']}")
+
+        # Préparation de la liste d'URLs
+        urls = [r["link"] for r in bing_results]
+        urls_text = "\n".join(urls)
+
+        # Bouton de téléchargement
+        st.download_button(
+            label="📥 Télécharger les URLs",
+            data=urls_text,
+            file_name="bing_urls.txt",
+            mime="text/plain"
+        )
+
+        # Bouton de copie dans le presse-papier
+        # On utilise un petit composant HTML/JS côté client
+        urls_json = json.dumps(urls_text)
+        copy_button = f"""
+            <button
+                style="padding:8px 12px; font-size:16px; margin-top:8px;"
+                onclick="navigator.clipboard.writeText({urls_json})">
+              📋 Copier les URLs
+            </button>
+        """
+        st.markdown(copy_button, unsafe_allow_html=True)
