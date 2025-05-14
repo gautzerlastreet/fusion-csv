@@ -75,23 +75,24 @@ if uploaded_files:
         export_format = st.selectbox("Format de téléchargement :", ["CSV", "Excel (.xlsx)"])
 
         if export_format == "CSV":
-            buffer = io.StringIO()
-            fusion.to_csv(buffer, index=False)
-            buffer.seek(0)
+            csv_buffer = io.StringIO()
+            fusion.to_csv(csv_buffer, index=False)
+            csv_buffer.seek(0)
             st.download_button(
                 label="📥 Télécharger en CSV",
-                data=buffer.getvalue(),
+                data=csv_buffer.getvalue(),
                 file_name="fusion.csv",
                 mime="text/csv"
             )
-        else:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+
+        elif export_format == "Excel (.xlsx)":
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                 fusion.to_excel(writer, index=False, sheet_name="Fusion")
-            buffer.seek(0)
+            excel_buffer.seek(0)
             st.download_button(
                 label="📥 Télécharger en Excel",
-                data=buffer,
+                data=excel_buffer,
                 file_name="fusion.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
