@@ -77,7 +77,7 @@ def run():
             return False
         if any(stop in expr for stop in EXCLUDED_EXPRESSIONS):
             return False
-        if len(expr.split()) == 1:
+        if len(expr.split()) < 2:
             return False
         return True
 
@@ -91,8 +91,8 @@ def run():
 
     st.title("🔍 Semantic Analyzer")
     st.markdown("""
-    Comparez les contenus de plusieurs pages web afin d'en extraire les mots-clés dominants,
-    d'analyser leur similarité et de mettre en évidence des opportunités de contenu.
+    Comparez les contenus de plusieurs pages web afin d'en extraire les expressions dominantes,
+    de repérer les opportunités de contenu et d'identifier les occurrences partagées entre sites.
     """)
 
     urls_input = st.text_area("Entrez les URLs à comparer (une par ligne):", height=150)
@@ -146,8 +146,8 @@ def run():
         ngram_freq = [(word, int(sum_words[0, idx])) for word, idx in ngram_vectorizer.vocabulary_.items()]
         ngram_freq_filtered = [(word, freq) for word, freq in ngram_freq if is_relevant_expression(word)]
         ngram_freq_deduped = deduplicate_ngrams(ngram_freq_filtered)
-        avg_per_doc = [(ng, freq, round(freq / len(valid_urls), 2)) for ng, freq in ngram_freq_deduped[:30]]
-        df_ngrams = pd.DataFrame(avg_per_doc, columns=["Expression", "Occurrences totales", "Occurrences moyennes"])
+        avg_per_doc = [(ng, freq, round(freq / len(valid_urls), 2)) for ng, freq in ngram_freq_deduped if freq > 1]
+        df_ngrams = pd.DataFrame(avg_per_doc, columns=["Occurrence", "Présence", "Moyenne"])
         st.dataframe(df_ngrams, use_container_width=True)
 
         st.subheader("📌 Expressions les plus importantes (2 à 4 mots)")
