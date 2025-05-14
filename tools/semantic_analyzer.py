@@ -181,9 +181,9 @@ def run() -> None:
                              for u, d in results.items()])
 
     # Display Sections
+    df_str = pd.DataFrame([{'URL':u, 'Title':d['title'], 'H1':d['h1'], 'Structure': ' | '.join(d['subsecs'])}
+                            for u, d in results.items()])
     with st.expander('🗂️ Structure & Stats', expanded=True):
-        df_str = pd.DataFrame([{'URL':u, 'Title':d['title'], 'H1':d['h1'], 'Structure': ' | '.join(d['subsecs'])}
-                                for u, d in results.items()])
         st.dataframe(pd.merge(df_stats, df_str, on='URL'), use_container_width=True)
     with st.expander('📊 Media & Links', expanded=False):
         st.dataframe(df_media, use_container_width=True)
@@ -198,15 +198,7 @@ def run() -> None:
     with st.expander('📖 Readability Metrics', expanded=False):
         st.dataframe(df_read, use_container_width=True)
 
-    # Export CSVs
-    st.download_button('📥 Export Structure & Stats',
-                       pd.merge(df_stats, df_str, on='URL').to_csv(index=False),
-                       file_name='structure_stats.csv')
-    st.download_button('📥 Export Media & Links', df_media.to_csv(index=False), file_name='media_links.csv')
-    st.download_button('📥 Export Expressions', df_cv.to_csv(index=False), file_name='expressions.csv')
-    st.download_button('📥 Export Readability', df_read.to_csv(index=False), file_name='readability.csv')
-
-    # Comparative Summary if user_url provided (moved after all analyses)
+    # Comparative Summary if user_url provided
     if user_data:
         st.subheader('🔍 Analyse comparative de votre page')
 
@@ -218,7 +210,7 @@ def run() -> None:
         c1.metric('Mots (votre page)', uwc, delta=int(uwc - mean_wc))
         c2.metric('Médiane groupe', median_wc)
 
-        # Key Expressions Missing (filtered)
+        # Key Expressions Missing
         stopw_terms = df_cv[(df_cv['Mean Count'] > 1) & (df_cv['Coverage (%)'] > 50)]['Expression'].tolist()
         user_text = clean_text(user_data['raw'])
         missing = [t for t in stopw_terms if t not in user_text]
@@ -244,6 +236,50 @@ def run() -> None:
         r1.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=int(ur['Flesch Ease'] - mean_read['Flesch Ease']))
         r2.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=int(ur['Kincaid Grade'] - mean_read['Kincaid Grade']))
         r3.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=int(ur['Gunning Fog'] - mean_read['Gunning Fog']))
+
+    # Exports at bottom
+    # CSV Exports
+    st.download_button('📥 Export Structure & Stats',
+                       pd.merge(df_stats, df_str, on='URL').to_csv(index=False),
+                       file_name='structure_stats.csv')
+    st.download_button('📥 Export Media & Links', df_media.to_csv(index=False), file_name='media_links.csv')
+    st.download_button('📥 Export Expressions', df_cv.to_csv(index=False), file_name='expressions.csv')
+    st.download_button('📥 Export Readability', df_read.to_csv(index=False), file_name='readability.csv')
+
+    # PDF Export
+    try:
+        import pdfkit
+        # Build HTML content
+        html = '<html><head><meta charset="utf-8"><style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ddd;padding:8px;}</style></head><body>'
+        html += f'<h1>🔍 Semantic Analyzer Report</h1>'
+        # Sections
+        html += '<h2>Structure & Stats</h2>' + pd.merge(df_stats, df_str, on='URL').to_html(index=False)
+        html += '<h2>Media & Links</h2>' + df_media.to_html(index=False)
+        html += '<h2>Expressions clés</h2>' + df_cv.to_html(index=False)
+        html += '<h2>Readability Metrics</h2>' + df_read.to_html(index=False)
+        if user_data:
+            html += '<h2>Analyse comparative</h2>'
+            html += f'<p><strong>Mots (votre page):</strong> {uwc} (écart: {uwc-mean_wc})<br>'
+            html += f'<strong>Médiane:</strong> {median_wc}</p>'
+            if missing:
+                html += '<h3>Mots clés manquants</h3>' + pd.DataFrame({'Mots clés manquants': missing}).to_html(index=False)
+            html += '<h3>Media & Links</h3>' + pd.DataFrame({
+                'Metrics':['Images','Liens internes','Liens externes'],
+                'Vous':[u_imgs,u_int,u_ext],
+                'Moyenne':[media_mean['Images'],media_mean['Internal'],media_mean['External']],
+                'Delta':[u_imgs-media_mean['Images'],u_int-media_mean['Internal'],u_ext-media_mean['External']]
+            }).to_html(index=False)
+            html += '<h3>Readability</h3>' + pd.DataFrame({
+                'Metrics':['Flesch Ease','Kincaid Grade','Gunning Fog'],
+                'Vous':[ur['Flesch Ease'],ur['Kincaid Grade'],ur['Gunning Fog']],
+                'Moyenne':[mean_read['Flesch Ease'],mean_read['Kincaid Grade'],mean_read['Gunning Fog']],
+                'Delta':[ur['Flesch Ease']-mean_read['Flesch Ease'],ur['Kincaid Grade']-mean_read['Kincaid Grade'],ur['Gunning Fog']-mean_read['Gunning Fog']]
+            }).to_html(index=False)
+        html += '</body></html>'
+        pdf = pdfkit.from_string(html, False)
+        st.download_button('📥 Télécharger PDF complet', data=pdf, file_name='analyse_complete.pdf', mime='application/pdf')
+    except Exception as e:
+        logger.error(f"PDF generation failed: {e}")
 
 if __name__ == "__main__":
     run()
