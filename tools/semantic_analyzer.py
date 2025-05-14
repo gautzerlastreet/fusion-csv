@@ -12,7 +12,7 @@ from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import CountVectorizer
 import textstat
 from urllib.parse import urlparse
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 # --- Logger Configuration ---
 logger = logging.getLogger(__name__)
@@ -74,21 +74,14 @@ def is_relevant_expression(expr: str) -> bool:
         return False
     return all(excl not in expr.lower() for excl in EXCLUDED_EXPRESSIONS)
 
-
 @st.cache_data(ttl=3600)
 def extract_content_from_url(url: str) -> Dict:
     """
-    Scrape URL and extract:
-      - raw text (paragraphs)
-      - title, h1, subsections (H2/H3)
-      - media counts (images, tables, buttons)
-      - link counts (internal/external)
+    Scrape URL content within <main> or largest <div>, extract text, media, and unique links.
     """
-    data = {
-        'raw': '', 'title': '', 'h1': '', 'subsecs': [],
-        'images': 0, 'tables': 0, 'buttons': 0,
-        'internal': 0, 'external': 0
-    }
+    data = {'raw': '', 'title': '', 'h1': '', 'subsecs': [],
+            'images': 0, 'tables': 0, 'buttons': 0,
+            'internal': 0, 'external': 0}
     try:
         resp = session.get(url, timeout=10)
         resp.raise_for_status()
@@ -97,21 +90,30 @@ def extract_content_from_url(url: str) -> Dict:
         # Remove irrelevant tags
         for tag in soup(['script', 'style', 'header', 'footer', 'nav', 'form']):
             tag.decompose()
-        # Media counts
-        data['images'] = len(soup.find_all('img'))
-        data['tables'] = len(soup.find_all('table'))
-        data['buttons'] = len(soup.find_all('button'))
-        # Link counts
-        for a in soup.find_all('a', href=True):
+        # Determine main content container
+        container = soup.find('main') or soup.find(id='content')
+        if not container:
+            divs = soup.find_all('div')
+            container = max(divs, key=lambda d: len(d.get_text().split()), default=soup.body)
+        # Media counts within container
+        data['images'] = len(container.find_all('img'))
+        data['tables'] = len(container.find_all('table'))
+        data['buttons'] = len(container.find_all('button'))
+        # Unique link counts within container
+        internal_links = set()
+        external_links = set()
+        for a in container.find_all('a', href=True):
             href = a['href']
             parsed = urlparse(href)
             if parsed.netloc and parsed.netloc != base:
-                data['external'] += 1
+                external_links.add(href)
             else:
-                data['internal'] += 1
-        # Text and structure
+                internal_links.add(href)
+        data['internal'] = len(internal_links)
+        data['external'] = len(external_links)
+        # Text and hierarchy within container
         paras = []
-        for tag in soup.find_all(['h1', 'h2', 'h3', 'p']):
+        for tag in container.find_all(['h1', 'h2', 'h3', 'p']):
             txt = tag.get_text(' ', strip=True)
             if tag.name == 'h1' and not data['h1']:
                 data['h1'] = txt
@@ -121,10 +123,9 @@ def extract_content_from_url(url: str) -> Dict:
                 paras.append(txt)
         data['raw'] = ' '.join(paras)
         data['title'] = soup.title.string.strip() if soup.title and soup.title.string else ''
-        return data
     except Exception as e:
         logger.error(f"Error scraping {url}: {e}")
-        return data
+    return data
 
 
 def get_readability_scores(text: str) -> Dict[str, int]:
@@ -143,7 +144,7 @@ def run() -> None:
     urls_input = st.text_area('Entrez les URLs (une par ligne)', height=150)
     language = st.selectbox('Langue du contenu', ['french', 'english'])
 
-    if not st.button('Analyser'):  # single button
+    if not st.button('Analyser'):
         return
     urls = [u.strip() if u.startswith(('http://', 'https://')) else f"https://{u.strip()}"
             for u in urls_input.splitlines() if u.strip()]
@@ -177,7 +178,6 @@ def run() -> None:
             ]) \
             .set_properties(subset=['URL', 'Title', 'H1', 'Structure'], **{'text-align': 'left', 'width': '250px'}) \
             .set_properties(subset=['Word Count'], **{'text-align': 'center', 'width': '80px'})
-        st.write('Structure du contenu (Hn) et nombre de mots par URL')
         st.dataframe(sty_comb, use_container_width=True)
 
     # Media & Links
@@ -197,7 +197,6 @@ def run() -> None:
             ]) \
             .set_properties(subset=['URL'], **{'text-align': 'left', 'width': '200px'}) \
             .set_properties(subset=['Images', 'Tables', 'Buttons', 'Internal Links', 'External Links'], **{'text-align': 'center', 'width': '80px'})
-        st.write('Comptage des médias et liens')
         st.dataframe(sty_media, use_container_width=True)
 
     # Expressions Clés (CountVectorizer)
@@ -224,7 +223,6 @@ def run() -> None:
             ]) \
             .set_properties(subset=['Expression'], **{'text-align': 'left', 'width': '200px'}) \
             .set_properties(subset=['Mean Count', 'Doc Coverage (%)'], **{'text-align': 'center', 'width': '80px'})
-        st.write('Top 40 des expressions clés (présence >= 40% des pages)')
         st.dataframe(sty_cv, use_container_width=True)
 
     # Readability Metrics
@@ -242,7 +240,6 @@ def run() -> None:
             ]) \
             .set_properties(subset=['URL'], **{'text-align': 'left', 'width': '200px'}) \
             .set_properties(subset=['Flesch Ease', 'Kincaid Grade', 'Gunning Fog'], **{'text-align': 'center', 'width': '80px'})
-        st.write('Scores de lisibilité par page')
         st.dataframe(sty_read, use_container_width=True)
 
     # Export CSVs
