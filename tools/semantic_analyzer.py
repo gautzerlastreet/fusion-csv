@@ -316,15 +316,19 @@ def run() -> None:
         for title, df in sections:
             html += f'<h2>{title}</h2>' + df.to_html(index=False)
         html += '</body></html>'
-        pdf = pdfkit.from_string(html, False)
-        st.download_button(
-            '📥 Télécharger PDF complet',
-            data=pdf,
-            file_name='rapport_semantic_analyzer.pdf',
-            mime='application/pdf'
-        )
+        try:
+            pdf = pdfkit.from_string(html, False)
+            st.download_button(
+                '📥 Télécharger PDF complet',
+                data=pdf,
+                file_name='rapport_semantic_analyzer.pdf',
+                mime='application/pdf'
+            )
+        except OSError:
+            st.warning('wKshtmltopdf non trouvé : installez wkhtmltopdf pour activer l\'export PDF.')
     else:
         st.warning('Pour exporter en PDF, installez pdfkit et wkhtmltopdf.')
 
 if __name__ == '__main__':
+    run()
     run()
