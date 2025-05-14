@@ -201,13 +201,29 @@ def run() -> None:
             .set_properties(subset=['Mean Count','Doc Coverage (%)'], **{'text-align':'center', 'width':'80px'})
         st.dataframe(sty_cv, use_container_width=True)
 
-    # Readability Metrics
+        # Readability Metrics
     with st.expander('📖 Readability Metrics',expanded=False):
-        st.markdown('_Flesch Ease_: + facile = + élevé<br>_Kincaid Grade_: niveau scolaire<br>_Gunning Fog_: + complexe = + élevé',unsafe_allow_html=True)
-        read=[{'URL':u,**get_readability_scores(v['raw'])} for u,v in results.items()]
-        df_read=pd.DataFrame(read)
+        st.markdown(
+            '_Flesch Ease_: + facile = + élevé<br>'+
+            '_Kincaid Grade_: niveau scolaire<br>'+
+            '_Gunning Fog_: + complexe = + élevé',unsafe_allow_html=True
+        )
+        # Calcul des scores pour chaque URL
+        read = [{'URL': u, **get_readability_scores(v['raw'])} for u, v in results.items()]
+        df_read = pd.DataFrame(read)
+        # Moyennes globales
+        mean_flesch = int(df_read['Flesch Ease'].mean())
+        mean_kincaid = int(df_read['Kincaid Grade'].mean())
+        mean_fog = int(df_read['Gunning Fog'].mean())
+        col1, col2, col3 = st.columns(3)
+        col1.metric('Moyenne Flesch Ease', mean_flesch)
+        col2.metric('Moyenne Kincaid Grade', mean_kincaid)
+        col3.metric('Moyenne Gunning Fog', mean_fog)
+        # Affichage du tableau avec alignements
         sty_read = df_read.style \
-            .set_table_styles([{'selector':'th','props':[('text-align','center')]}, {'selector':'td','props':[('white-space','normal')]}]) \
+            .set_table_styles([
+                {'selector':'th','props':[('text-align','center')]},
+                {'selector':'td','props':[('white-space','normal')]}]) \
             .set_properties(subset=['URL'], **{'text-align':'left', 'width':'250px'}) \
             .set_properties(subset=['Flesch Ease','Kincaid Grade','Gunning Fog'], **{'text-align':'center', 'width':'80px'})
         st.dataframe(sty_read, use_container_width=True)
