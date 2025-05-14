@@ -84,6 +84,27 @@ def main_tab():
         "Count secondaires"
     ]]
 
+        # Graphiques de résultats
+    total_primary = df_final.shape[0]
+    total_secondary = df_final["Count secondaires"].sum()
+    total_vol_primary = df_final["Volume mot clé principal"].sum()
+    total_vol_secondary = df_final["Volume cumulé secondaires"].sum()
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Nombre de Mots Clés**")
+        chart_df1 = pd.DataFrame({
+            "Type": ["Primaires", "Secondaires"],
+            "Nombre": [total_primary, total_secondary]
+        }).set_index("Type")
+        st.bar_chart(chart_df1)
+    with col2:
+        st.markdown("**Volume de Recherche**")
+        chart_df2 = pd.DataFrame({
+            "Type": ["Primaires", "Secondaires"],
+            "Volume": [total_vol_primary, total_vol_secondary]
+        }).set_index("Type")
+        st.bar_chart(chart_df2)
+
     # Affichage et export
     st.dataframe(df_final, use_container_width=True)
     output_name = f"similarity_refine_{threshold}.xlsx"
@@ -95,21 +116,3 @@ def main_tab():
             file_name=output_name,
             mime="application/vnd.ms-excel"
         )
-
-
-def about_tab():
-    st.markdown(
-        """
-        ### À propos
-        Cet outil permet de filtrer et d'analyser la similarité des mots clés secondaires
-        par rapport aux mots clés primaires, avec export simplifié.
-        """
-    )
-
-
-def run():
-    tabs = st.tabs(["Main", "About"])
-    with tabs[0]:
-        main_tab()
-    with tabs[1]:
-        about_tab()
