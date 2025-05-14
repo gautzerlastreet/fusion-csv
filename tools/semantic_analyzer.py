@@ -120,7 +120,7 @@ def process_content_vectors(docs: List[str], lang: str) -> pd.DataFrame:
         return pd.DataFrame(columns=['Expression', 'Mean Count', 'Coverage (%)'])
 
     stopw = stopwords.words(lang)
-    cv = CountVectorizer(ngram_range=(2, 4), stop_words=stopw, min_df=1, max_df=0.95)
+    cv = CountVectorizer(ngram_range=(2, 4), stop_words=stopw)
     X = cv.fit_transform(docs)
     terms = cv.get_feature_names_out()
     cov = np.array((X > 0).sum(axis=0)).ravel() / len(docs) * 100
@@ -132,12 +132,11 @@ def process_content_vectors(docs: List[str], lang: str) -> pd.DataFrame:
     for i, term in enumerate(terms):
         counts = X[:, cv.vocabulary_[term]].toarray().ravel()
         nz = counts[counts > 0]
-        if nz.size and cov[i] >= 30 and is_relevant_expression(term) and not contains_number_token(term):
-            data.append({
-                'Expression': term,
-                'Mean Count': round(nz.mean(), 1),
-                'Coverage (%)': round(cov[i], 1)
-            })
+        mean_count = round(nz.mean(), 1)
+        coverage = round(cov[i], 1)
+        if nz.size and coverage >= 30 and is_relevant_expression(term) and not contains_number_token(term):
+            if mean_count > 1 or coverage >= 40:
+                data.append({'Expression': term, 'Mean Count': mean_count, 'Coverage (%)': coverage})
 
     return pd.DataFrame(data).sort_values('Coverage (%)', ascending=False).head(100)
 
