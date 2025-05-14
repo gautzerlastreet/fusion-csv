@@ -166,5 +166,5 @@ def run():
         st.markdown(f"**Nombre moyen de mots :** {avg_words}")
 
         st.markdown("**Top 10 des expressions les plus stratégiques :**")
-        top_10 = df_final.head(10).reset_index(drop=True)
+        top_10 = df_final.head(20).reset_index(drop=True)
         st.dataframe(top_10, use_container_width=True)
