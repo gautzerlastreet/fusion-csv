@@ -84,7 +84,7 @@ def main_tab():
         "Count secondaires"
     ]]
 
-        # Graphiques de résultats
+    # Graphiques de résultats
     total_primary = df_final.shape[0]
     total_secondary = df_final["Count secondaires"].sum()
     total_vol_primary = df_final["Volume mot clé principal"].sum()
@@ -116,3 +116,21 @@ def main_tab():
             file_name=output_name,
             mime="application/vnd.ms-excel"
         )
+
+
+def about_tab():
+    st.markdown(
+        """
+        ### À propos
+        Cet outil permet de filtrer et d'analyser la similarité des mots clés secondaires
+        par rapport aux mots clés primaires, avec export simplifié.
+        """
+    )
+
+
+def run():
+    tabs = st.tabs(["Main", "About"])
+    with tabs[0]:
+        main_tab()
+    with tabs[1]:
+        about_tab()
