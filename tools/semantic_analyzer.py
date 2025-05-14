@@ -93,14 +93,12 @@ def extract_content_from_url(url: str) -> Tuple[str, str, str, List[str], List[s
         soup = BeautifulSoup(resp.text, 'html.parser')
         body = soup.body or soup
 
-        # Suppression des balises non pertinentes
         for tag in body(['script', 'style', 'nav', 'footer', 'header', 'form', 'table']):
             tag.decompose()
 
         raw_paras, h2s, h3s = [], [], []
         title = soup.title.string.strip() if soup.title and soup.title.string else ""
         h1 = ""
-
         for tag in body.find_all(['h1', 'h2', 'h3', 'p']):
             txt = tag.get_text(' ', strip=True)
             if tag.name == 'h1' and not h1:
@@ -111,7 +109,6 @@ def extract_content_from_url(url: str) -> Tuple[str, str, str, List[str], List[s
                 h3s.append(txt)
             else:
                 raw_paras.append(txt)
-
         raw = ' '.join(raw_paras)
         cleaned = clean_text(raw)
         return raw, title, h1, h2s, h3s
@@ -190,6 +187,20 @@ def run() -> None:
         st.subheader('📊 Nombre de mots par URL')
         st.dataframe(df_stats, use_container_width=True)
 
+        # Structure des pages
+        df_struct = pd.DataFrame([
+            {
+                'URL': u,
+                'Title': data['title'],
+                'H1': data['h1'],
+                'H2': '; '.join(data['h2s']),
+                'H3': '; '.join(data['h3s'])
+            }
+            for u, data in results.items()
+        ])
+        st.subheader('🗂️ Structure des pages')
+        st.dataframe(df_struct, use_container_width=True)
+
         docs = [clean_text(data['raw']) for data in results.values()]
         word_counts = df_stats['Word Count'].values
         stop_words = stopwords.words(language)
@@ -216,11 +227,11 @@ def run() -> None:
                 counts = X[:, cv.vocabulary_[term]].toarray().flatten()
                 data_cv.append({
                     'Expression': term,
-                    'Mean Count': int(np.round(np.mean(counts))),
-                    'Doc Coverage': int(np.round(coverage[cv.vocabulary_[term]])),
-                    'Density (%)': int(np.round(np.mean(counts / word_counts * 100)))
+                    'Mean Count': int(round(np.mean(counts))),
+                    'Doc Coverage (%)': int(round(coverage[cv.vocabulary_[term]])),
+                    'Density (%)': int(round(np.mean(counts / word_counts * 100)))
                 })
-        df_cv = pd.DataFrame(data_cv).sort_values(['Doc Coverage', 'Density (%)'], ascending=False)
+        df_cv = pd.DataFrame(data_cv).sort_values(['Doc Coverage (%)', 'Density (%)'], ascending=False)
         st.table(df_cv)
 
         # 4) TF-IDF
@@ -228,7 +239,7 @@ def run() -> None:
             '''
             **Top 20 TF-IDF**  
             *Expression* : phrase extraite.  
-            *Avg TF-IDF* : score TF-IDF moyen sur les docs.  
+            *Avg TF-IDF* : score TF-IDF moyen sur les docs (sans unité).  
             '''
         )
         tfidf = TfidfVectorizer(ngram_range=(2, 4), stop_words=stop_words)
@@ -238,7 +249,7 @@ def run() -> None:
         top_idx = np.argsort(tf_scores)[::-1][:20]
         df_tfidf = pd.DataFrame({
             'Expression': tf_terms[top_idx],
-            'Avg TF-IDF': [float(np.round(score, 2)) for score in tf_scores[top_idx]]
+            'Avg TF-IDF': [round(score, 2) for score in tf_scores[top_idx]]
         })
         st.table(df_tfidf)
 
@@ -248,7 +259,7 @@ def run() -> None:
             **RAKE Keywords**  
             RAKE (Rapid Automatic Keyword Extraction) identifie des phrases clés significatives.  
             *Keyword* : phrase extraite.  
-            *Score* : poids RAKE (plus élevé = plus pertinent).  
+            *Score* : poids RAKE (score entier, plus élevé = plus pertinent).  
             '''
         )
         rake_rows = []
@@ -257,7 +268,7 @@ def run() -> None:
                 rake_rows.append({
                     'URL': u,
                     'Keyword': phrase,
-                    'Score': int(np.round(score))
+                    'Score': int(round(score))
                 })
         df_rake = pd.DataFrame(rake_rows)
         st.table(df_rake)
@@ -276,9 +287,9 @@ def run() -> None:
             scores = get_readability_scores(data['raw'])
             read_rows.append({
                 'URL': u,
-                'Flesch Ease': int(np.round(scores['flesch_reading_ease'])),
-                'Kincaid Grade': int(np.round(scores['flesch_kincaid_grade'])),
-                'Gunning Fog': int(np.round(scores['gunning_fog']))
+                'Flesch Ease': int(round(scores['flesch_reading_ease'])),
+                'Kincaid Grade': int(round(scores['flesch_kincaid_grade'])),
+                'Gunning Fog': int(round(scores['gunning_fog']))
             })
         df_read = pd.DataFrame(read_rows)
         st.table(df_read)
