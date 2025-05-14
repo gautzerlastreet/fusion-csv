@@ -124,7 +124,7 @@ def get_readability_scores(text: str) -> Dict[str, int]:
 
 
 def run() -> None:
-    st.set_page_config(page_title='Semantic Analyzer', layout='wide')
+
     st.title('🔍 Semantic Analyzer')
 
     urls_input = st.text_area('Entrez les URLs (une par ligne)', height=150)
