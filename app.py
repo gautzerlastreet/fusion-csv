@@ -16,38 +16,68 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     dfs = []
     colonnes = None
-    erreur_encodage = False
+    erreurs = []
 
     for file in uploaded_files:
+        loaded = False
+        filename = file.name
+
+        # Essai 1 : utf-8 + séparateur ,
         try:
             df = pd.read_csv(file, encoding='utf-8')
-            encodage_utilisé = 'utf-8'
-        except UnicodeDecodeError:
+            loaded = True
+            encodage_utilisé = "utf-8"
+            separateur = ","
+        except Exception:
+            pass
+
+        # Essai 2 : ISO-8859-1 + ,
+        if not loaded:
+            file.seek(0)
             try:
                 df = pd.read_csv(file, encoding='ISO-8859-1')
-                encodage_utilisé = 'ISO-8859-1'
-            except Exception as e:
-                st.error(f"Erreur lors de l'ouverture du fichier {file.name} : {e}")
-                erreur_encodage = True
-                continue
+                loaded = True
+                encodage_utilisé = "ISO-8859-1"
+                separateur = ","
+            except Exception:
+                pass
 
-        # Vérifier que les colonnes sont cohérentes
+        # Essai 3 : ISO-8859-1 + ;
+        if not loaded:
+            file.seek(0)
+            try:
+                df = pd.read_csv(file, encoding='ISO-8859-1', sep=';')
+                loaded = True
+                encodage_utilisé = "ISO-8859-1"
+                separateur = ";"
+            except Exception:
+                pass
+
+        if not loaded or df.empty or df.columns.size == 0:
+            erreurs.append(f"❌ {filename} : Fichier vide ou illisible")
+            continue
+
+        # Vérification des colonnes
         if colonnes is None:
             colonnes = df.columns.tolist()
         elif df.columns.tolist() != colonnes:
-            st.error(f"Les colonnes du fichier {file.name} ne correspondent pas aux autres fichiers.")
-            st.stop()
+            erreurs.append(f"⚠️ {filename} : Colonnes différentes")
+            continue
 
         dfs.append(df)
-        st.info(f"✅ Fichier **{file.name}** chargé avec encodage : `{encodage_utilisé}`")
+        st.success(f"✅ {filename} chargé ({encodage_utilisé}, séparateur `{separateur}`)")
 
-    if not erreur_encodage and len(dfs) > 1:
+    # Affichage des erreurs
+    for err in erreurs:
+        st.warning(err)
+
+    # Fusion
+    if len(dfs) >= 2:
         fusion = pd.concat(dfs, ignore_index=True)
-
-        st.success(f"🎉 {len(dfs)} fichiers fusionnés avec succès. Aperçu :")
+        st.success(f"🎉 {len(dfs)} fichiers fusionnés avec succès ! Aperçu ci-dessous :")
         st.dataframe(fusion.head())
 
-        # Export CSV
+        # Export
         buffer = io.StringIO()
         fusion.to_csv(buffer, index=False)
         buffer.seek(0)
@@ -59,4 +89,6 @@ if uploaded_files:
             mime="text/csv"
         )
     elif len(dfs) == 1:
-        st.warning("Vous devez importer **au moins deux fichiers** pour les fusionner.")
+        st.info("Un seul fichier valide. Rien à fusionner.")
+    else:
+        st.error("Aucun fichier valide n’a pu être traité.")
