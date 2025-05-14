@@ -1,8 +1,7 @@
-# tools/serp_checker.py
-
 import requests
 from bs4 import BeautifulSoup
 import streamlit as st
+import streamlit.components.v1 as components
 
 # --- USER-AGENT et en-têtes pour éviter le blocage et forcer le français ---
 USER_AGENT = (
@@ -17,9 +16,9 @@ HEADERS = {
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_bing_results(query: str) -> list[dict]:
-    """Scrape les 10 premiers résultats Bing pour la requête."""
+    """Scrape les résultats Bing pour la requête (demande 20, garde 10)."""
     url = "https://www.bing.com/search"
-    params = {"q": query, "count": 10}
+    params = {"q": query, "count": 20}
     resp = requests.get(url, headers=HEADERS, params=params, timeout=5)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -31,15 +30,12 @@ def get_bing_results(query: str) -> list[dict]:
         link = h2.find("a")["href"]
         title = h2.get_text()
         snippet = li.find("p").get_text() if li.find("p") else ""
-        results.append({
-            "title":   title,
-            "link":    link,
-            "snippet": snippet
-        })
+        results.append({"title": title, "link": link, "snippet": snippet})
     return results
 
+
 def run():
-    """Point d’entrée Streamlit pour le SERP Checker (Bing uniquement)."""
+    """Point d’entrée Streamlit pour le SERP Checker Bing + boutons téléchargement & copie."""
     st.header("🅱️ Comparateur SERP Bing (sans API ni Google)")
     query = st.text_input("Entrez un mot-clé", placeholder="ex. “optimisation SEO Python”")
     if st.button("Lancer la recherche") and query:
@@ -66,16 +62,17 @@ def run():
             mime="text/plain"
         )
 
-        # Bouton de copie dans le presse-papier corrigé
-        # On utilise un literal JS (backticks) pour conserver les sauts de ligne
-        copy_button = f'''
-            <button
-                style="padding:8px 12px; font-size:16px; margin-top:8px;"
-                onclick="
-                  const text = `{urls_text}`;
-                  navigator.clipboard.writeText(text);
-                ">
-              📋 Copier les URLs
-            </button>
-        '''
-        st.markdown(copy_button, unsafe_allow_html=True)
+        # Bouton de copie dans le presse-papier via components.html
+        html = f"""
+        <button id='copy-btn' style='padding:8px 12px; font-size:16px; margin-top:8px;'>📋 Copier les URLs</button>
+        <script>
+        const btn = document.getElementById('copy-btn');
+        btn.addEventListener('click', () => {{
+            const text = `{urls_text}`;
+            navigator.clipboard.writeText(text).then(() => {{
+                alert('✅ URLs copiées dans le presse-papier !');
+            }});
+        }});
+        </script>
+        """
+        components.html(html, height=75)
