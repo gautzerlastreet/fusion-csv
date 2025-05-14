@@ -2,36 +2,52 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Fusion CSV", layout="centered")
+st.set_page_config(page_title="Fusionneur de fichiers CSV", layout="centered")
 
 st.title("🧩 Fusionneur de fichiers CSV")
+st.markdown("Dépose plusieurs fichiers CSV avec le même format (colonnes identiques)")
 
 uploaded_files = st.file_uploader(
-    "Dépose plusieurs fichiers CSV avec le même format", 
-    type="csv", 
+    "Drag and drop files here",
+    type="csv",
     accept_multiple_files=True
 )
 
 if uploaded_files:
-    try:
-        # Lire tous les fichiers dans des DataFrames
-        dfs = [pd.read_csv(file) for file in uploaded_files]
+    dfs = []
+    colonnes = None
+    erreur_encodage = False
 
-        # Vérifier que les colonnes sont identiques
-        colonnes = dfs[0].columns.tolist()
-        for df in dfs:
-            if list(df.columns) != colonnes:
-                st.error("Tous les fichiers doivent avoir les mêmes colonnes et dans le même ordre.")
-                st.stop()
+    for file in uploaded_files:
+        try:
+            df = pd.read_csv(file, encoding='utf-8')
+            encodage_utilisé = 'utf-8'
+        except UnicodeDecodeError:
+            try:
+                df = pd.read_csv(file, encoding='ISO-8859-1')
+                encodage_utilisé = 'ISO-8859-1'
+            except Exception as e:
+                st.error(f"Erreur lors de l'ouverture du fichier {file.name} : {e}")
+                erreur_encodage = True
+                continue
 
-        # Fusionner les fichiers
+        # Vérifier que les colonnes sont cohérentes
+        if colonnes is None:
+            colonnes = df.columns.tolist()
+        elif df.columns.tolist() != colonnes:
+            st.error(f"Les colonnes du fichier {file.name} ne correspondent pas aux autres fichiers.")
+            st.stop()
+
+        dfs.append(df)
+        st.info(f"✅ Fichier **{file.name}** chargé avec encodage : `{encodage_utilisé}`")
+
+    if not erreur_encodage and len(dfs) > 1:
         fusion = pd.concat(dfs, ignore_index=True)
 
-        # Afficher un aperçu
-        st.success(f"{len(uploaded_files)} fichiers fusionnés avec succès !")
+        st.success(f"🎉 {len(dfs)} fichiers fusionnés avec succès. Aperçu :")
         st.dataframe(fusion.head())
 
-        # Préparer le fichier à télécharger
+        # Export CSV
         buffer = io.StringIO()
         fusion.to_csv(buffer, index=False)
         buffer.seek(0)
@@ -42,6 +58,5 @@ if uploaded_files:
             file_name="fusion.csv",
             mime="text/csv"
         )
-
-    except Exception as e:
-        st.error(f"Erreur lors du traitement : {e}")
+    elif len(dfs) == 1:
+        st.warning("Vous devez importer **au moins deux fichiers** pour les fusionner.")
