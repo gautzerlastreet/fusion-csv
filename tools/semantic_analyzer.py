@@ -110,7 +110,8 @@ def run():
                 texts.append(content)
                 valid_urls.append(url)
                 word_counts[url] = len(content.split())
-                structure_rows.append([url, title, h1, " | ".join(h2s + h3s)])
+                structure = "\n".join([f"H2: {h2}" for h2 in h2s] + [f"H3: {h3}" for h3 in h3s])
+                structure_rows.append([url, title, h1, structure])
             else:
                 st.warning(f"Contenu insuffisant ou vide : {url}")
             time.sleep(0.5)
