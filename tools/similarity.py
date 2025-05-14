@@ -92,23 +92,34 @@ def main_tab():
     cols = base_cols + other_cols
     df_final = df_final[cols]
 
-    # Métriques globales
+        # Métriques globales et graphiques côte-à-côte
     total_primary = df_final.shape[0]
     total_secondary = df_final["Count secondaires"].sum()
     total_vol_primary = df_final["Volume mot clé principal"].sum()
     total_vol_secondary = df_final["Volume cumulé secondaires"].sum()
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns([1,1,1])
     with col1:
         st.metric("Mots clés primaires", total_primary)
         st.metric("Mots clés secondaires", total_secondary)
-    with col2:
         st.metric("Volume primaire", total_vol_primary)
         st.metric("Volume secondaire", total_vol_secondary)
+    with col2:
+        st.markdown("**Nombre de Mots Clés**")
+        chart_df1 = pd.DataFrame({
+            "Type": ["Primaires", "Secondaires"],
+            "Nombre": [total_primary, total_secondary]
+        }).set_index("Type")
+        st.bar_chart(chart_df1)
     with col3:
-        st.text("")  # placeholder
+        st.markdown("**Volume de Recherche**")
+        chart_df2 = pd.DataFrame({
+            "Type": ["Primaires", "Secondaires"],
+            "Volume": [total_vol_primary, total_vol_secondary]
+        }).set_index("Type")
+        st.bar_chart(chart_df2)
 
-    # Graphiques
+    # Affichage du DataFrame
     chart_df1 = pd.DataFrame({
         "Type": ["Primaires", "Secondaires"],
         "Nombre": [total_primary, total_secondary]
