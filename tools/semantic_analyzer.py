@@ -5,7 +5,7 @@ def run():
     import requests
     from bs4 import BeautifulSoup
     import re
-    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
     from sklearn.decomposition import LatentDirichletAllocation
     import numpy as np
@@ -51,10 +51,13 @@ def run():
             if 'charset' in r.headers.get('content-type', '').lower():
                 r.encoding = r.apparent_encoding
             soup = BeautifulSoup(r.text, 'html.parser')
-            for tag in soup(['script', 'style', 'meta', 'nav', 'footer', 'header']):
+            body = soup.body
+            if not body:
+                return ""
+            for tag in body(['script', 'style', 'meta', 'nav', 'footer', 'header']):
                 tag.decompose()
-            main_content = soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'article', 'section', 'div.content'])
-            text = ' '.join([elem.get_text(strip=True) for elem in main_content]) if main_content else soup.get_text(strip=True)
+            main_content = body.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'article', 'section', 'div.content'])
+            text = ' '.join([elem.get_text(strip=True) for elem in main_content]) if main_content else body.get_text(strip=True)
             text = re.sub(r'\s+', ' ', text)
             return text.strip() if len(text.strip()) > 100 else ""
         except Exception as e:
@@ -113,6 +116,19 @@ def run():
 
                 try:
                     stop_words = stopwords.words(language)
+
+                    # Expressions clés communes (2 à 4 mots)
+                    st.subheader("🧩 Expressions clés communes (2 à 4 mots)")
+                    ngram_vectorizer = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words, max_features=1000)
+                    ngram_matrix = ngram_vectorizer.fit_transform(cleaned_texts)
+                    sum_words = ngram_matrix.sum(axis=0)
+                    ngram_freq = [(word, int(sum_words[0, idx])) for word, idx in ngram_vectorizer.vocabulary_.items()]
+                    ngram_freq_sorted = sorted(ngram_freq, key=lambda x: x[1], reverse=True)
+                    avg_per_doc = [(ng, freq, round(freq / len(valid_urls), 2)) for ng, freq in ngram_freq_sorted[:30]]
+                    df_ngrams = pd.DataFrame(avg_per_doc, columns=["Expression", "Occurrences totales", "Occurrences moyennes"])
+                    st.dataframe(df_ngrams, use_container_width=True)
+
+                    # Analyse TF-IDF
                     vectorizer = TfidfVectorizer(stop_words=stop_words, max_features=500)
                     tfidf_matrix = vectorizer.fit_transform(cleaned_texts)
                     feature_names = vectorizer.get_feature_names_out()
