@@ -2,90 +2,93 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Fusion de CSV", layout="centered")
+st.set_page_config(page_title="Fusionneur de fichiers CSV", layout="centered")
 
 st.title("🧩 Fusionneur de fichiers CSV")
-st.markdown("Dépose plusieurs fichiers CSV avec le **même format** (colonnes identiques, même ordre)")
+st.markdown("Dépose plusieurs fichiers CSV avec le même format (colonnes identiques)")
 
 uploaded_files = st.file_uploader(
-    "Dépose tes fichiers ici",
+    "Drag and drop files here",
     type="csv",
     accept_multiple_files=True
 )
 
 if uploaded_files:
     dfs = []
+    colonnes = None
     erreurs = []
-    colonnes_ref = None
 
     for file in uploaded_files:
-        df = None
+        loaded = False
         filename = file.name
 
-        for enc in ['utf-8', 'ISO-8859-1']:
-            for sep in [',', ';']:
-                file.seek(0)
-                try:
-                    df = pd.read_csv(file, encoding=enc, sep=sep)
-                    if df.empty or df.columns.size == 0:
-                        df = None
-                        continue
-                    break
-                except:
-                    continue
-            if df is not None:
-                break
+        # Essai 1 : utf-8 + séparateur ,
+        try:
+            df = pd.read_csv(file, encoding='utf-8')
+            loaded = True
+            encodage_utilisé = "utf-8"
+            separateur = ","
+        except Exception:
+            pass
 
-        if df is None:
-            erreurs.append(f"❌ {filename} : fichier vide ou illisible.")
+        # Essai 2 : ISO-8859-1 + ,
+        if not loaded:
+            file.seek(0)
+            try:
+                df = pd.read_csv(file, encoding='ISO-8859-1')
+                loaded = True
+                encodage_utilisé = "ISO-8859-1"
+                separateur = ","
+            except Exception:
+                pass
+
+        # Essai 3 : ISO-8859-1 + ;
+        if not loaded:
+            file.seek(0)
+            try:
+                df = pd.read_csv(file, encoding='ISO-8859-1', sep=';')
+                loaded = True
+                encodage_utilisé = "ISO-8859-1"
+                separateur = ";"
+            except Exception:
+                pass
+
+        if not loaded or df.empty or df.columns.size == 0:
+            erreurs.append(f"❌ {filename} : Fichier vide ou illisible")
             continue
 
-        if colonnes_ref is None:
-            colonnes_ref = df.columns.tolist()
-        elif df.columns.tolist() != colonnes_ref:
-            erreurs.append(f"⚠️ {filename} : colonnes différentes de la référence.")
+        # Vérification des colonnes
+        if colonnes is None:
+            colonnes = df.columns.tolist()
+        elif df.columns.tolist() != colonnes:
+            erreurs.append(f"⚠️ {filename} : Colonnes différentes")
             continue
 
         dfs.append(df)
-        st.success(f"✅ {filename} chargé avec succès ({len(df)} lignes)")
+        st.success(f"✅ {filename} chargé ({encodage_utilisé}, séparateur `{separateur}`)")
 
+    # Affichage des erreurs
     for err in erreurs:
         st.warning(err)
 
+    # Fusion
     if len(dfs) >= 2:
         fusion = pd.concat(dfs, ignore_index=True)
-
-        st.markdown("### 🧼 Options de nettoyage")
-        if st.checkbox("Supprimer les lignes dupliquées"):
-            fusion.drop_duplicates(inplace=True)
-        if st.checkbox("Supprimer les lignes entièrement vides"):
-            fusion.dropna(how="all", inplace=True)
-
-        st.success(f"🎉 {len(dfs)} fichiers fusionnés avec succès. Résultat : {len(fusion)} lignes")
+        st.success(f"🎉 {len(dfs)} fichiers fusionnés avec succès ! Aperçu ci-dessous :")
         st.dataframe(fusion.head())
 
-        st.markdown("### 📤 Exporter le fichier fusionné")
-        export_format = st.selectbox("Format de téléchargement :", ["CSV", "Excel (.xlsx)"])
+        # Export
+        buffer = io.StringIO()
+        fusion.to_csv(buffer, index=False)
+        buffer.seek(0)
 
-        if export_format == "CSV":
-            csv_text = fusion.to_csv(index=False)  # ✅ ici on obtient une chaîne de caractères
-            st.download_button(
-                label="📥 Télécharger en CSV",
-                data=csv_text,
-                file_name="fusion.csv",
-                mime="text/csv"
-            )
-
-        elif export_format == "Excel (.xlsx)":
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                fusion.to_excel(writer, index=False, sheet_name="Fusion")
-            excel_buffer.seek(0)
-            st.download_button(
-                label="📥 Télécharger en Excel",
-                data=excel_buffer,
-                file_name="fusion.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        st.download_button(
+            label="📥 Télécharger le fichier fusionné",
+            data=buffer.getvalue(),  # ✅ CORRECTION FINALE ici
+            file_name="fusion.csv",
+            mime="text/csv"
+        )
+    elif len(dfs) == 1:
+        st.info("Un seul fichier valide. Rien à fusionner.")
     else:
-        st.error("❌ Au moins 2 fichiers valides sont requis pour la fusion.")
+        st.error("Aucun fichier valide n’a pu être traité.")
