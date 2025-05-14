@@ -169,27 +169,36 @@ def run() -> None:
             .set_properties(subset=['Word Count'], **{'text-align':'center', 'width':'80px'})
         st.dataframe(sty_comb, use_container_width=True)
 
-    # Expressions clés
+        # Expressions clés
     with st.expander('🧩 Expressions clés',expanded=True):
-        st.markdown('_Expression | Mean Count | Doc Coverage (%) | Density (%)_')
-        docs=[clean_text(v['raw']) for v in results.values()]
-        wcs=df_stats['Word Count'].values
-        stopw=stopwords.words(language)
-        cv=CountVectorizer(ngram_range=(2,4),stop_words=stopw)
-        X=cv.fit_transform(docs)
-        terms=cv.get_feature_names_out()
-        cov=(X>0).sum(axis=0).A1/len(docs)*100
-        mask=cov>=40
-        rows=[]
-        for t in terms[mask][:40]:
-            cts=X[:,cv.vocabulary_[t]].toarray().ravel()
-            if is_relevant_expression(t):
-                rows.append({'Expression':t,'Mean Count':int(cts.mean()),'Doc Coverage (%)':int(cov[cv.vocabulary_[t]]),'Density (%)':int((cts/wcs*100).mean())})
-        df_cv=pd.DataFrame(rows).sort_values(['Doc Coverage (%)','Density (%)'],ascending=False)
+        st.markdown('_Expression | Mean Count | Doc Coverage (%)_')
+        docs = [clean_text(v['raw']) for v in results.values()]
+        stopw = stopwords.words(language)
+        cv = CountVectorizer(ngram_range=(2,4), stop_words=stopw)
+        X = cv.fit_transform(docs)
+        terms = cv.get_feature_names_out()
+        # Coverage in %
+        cov = np.array((X>0).sum(axis=0)).ravel() / len(docs) * 100
+        mask = cov >= 40
+        rows = []
+        for term in terms[mask][:40]:
+            counts = X[:, cv.vocabulary_[term]].toarray().ravel()
+            # mean only across docs containing term
+            nonzero = counts[counts>0]
+            mean_count = int(round(nonzero.mean())) if nonzero.size>0 else 0
+            if is_relevant_expression(term):
+                rows.append({
+                    'Expression': term,
+                    'Mean Count': mean_count,
+                    'Doc Coverage (%)': int(round(cov[cv.vocabulary_[term]]))
+                })
+        df_cv = pd.DataFrame(rows).sort_values('Doc Coverage (%)', ascending=False)
         sty_cv = df_cv.style \
-            .set_table_styles([{'selector':'th','props':[('text-align','center')]}, {'selector':'td','props':[('white-space','normal')]}]) \
+            .set_table_styles([
+                {'selector':'th','props':[('text-align','center')]},
+                {'selector':'td','props':[('white-space','normal')]}]) \
             .set_properties(subset=['Expression'], **{'text-align':'left', 'width':'200px'}) \
-            .set_properties(subset=['Mean Count','Doc Coverage (%)','Density (%)'], **{'text-align':'center', 'width':'80px'})
+            .set_properties(subset=['Mean Count','Doc Coverage (%)'], **{'text-align':'center', 'width':'80px'})
         st.dataframe(sty_cv, use_container_width=True)
 
     # Readability Metrics
