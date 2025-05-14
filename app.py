@@ -1,11 +1,18 @@
+# app.py
+
 import streamlit as st
+
+# ⚠️ set_page_config DOIT être la toute première commande Streamlit
+st.set_page_config(page_title="Outils SEO", layout="wide")
+
 from tools import fusion, semantic_analyzer
 from tools.brief_generator import generate_content_brief_interface
 
-st.set_page_config(page_title="Outils SEO", layout="wide")
-
 st.sidebar.title("🧰 Suite d'outils SEO")
-tool = st.sidebar.selectbox("Choisissez un outil", ["CSV Fusionner", "Semantic Analyzer", "Générer un brief SEO"])
+tool = st.sidebar.selectbox(
+    "Choisissez un outil",
+    ["CSV Fusionner", "Semantic Analyzer", "Générer un brief SEO"]
+)
 
 if tool == "CSV Fusionner":
     fusion.run()
