@@ -62,22 +62,25 @@ def run():
             soup = BeautifulSoup(response.text, 'html.parser')
             body = soup.body
             if not body:
-                return ""
+                return "", "", "", [], []
             for tag in body(['script', 'style', 'meta', 'nav', 'footer', 'header', 'h4', 'h5', 'table']):
                 tag.decompose()
-            content = []
-            skip = False
+            content, h2_tags, h3_tags = [], [], []
+            title = soup.title.string.strip() if soup.title and soup.title.string else ""
+            h1 = ""
             for tag in body.find_all(True):
-                if tag.name in ['h4', 'h5']:
-                    skip = True
-                elif tag.name.startswith('h'):
-                    skip = False
-                elif not skip and tag.name == 'p':
+                if tag.name == 'h1' and not h1:
+                    h1 = tag.get_text(" ", strip=True)
+                elif tag.name == 'h2':
+                    h2_tags.append(tag.get_text(" ", strip=True))
+                elif tag.name == 'h3':
+                    h3_tags.append(tag.get_text(" ", strip=True))
+                elif tag.name == 'p':
                     content.append(tag.get_text(" ", strip=True))
-            return re.sub(r'\s+', ' ', " ".join(content))
+            return re.sub(r'\s+', ' ', " ".join(content)), title, h1, h2_tags, h3_tags
         except Exception as e:
             st.error(f"Erreur pour {url} : {str(e)}")
-            return ""
+            return "", "", "", [], []
 
     st.title("🔍 Semantic Analyzer")
     st.markdown("""
@@ -97,15 +100,17 @@ def run():
         progress_text = st.empty()
         progress_bar = st.progress(0)
         texts, valid_urls, word_counts = [], [], {}
+        structure_rows = []
 
         for i, url in enumerate(urls):
             progress_text.text(f"Extraction du contenu de {url}")
             progress_bar.progress((i + 1) / len(urls))
-            content = extract_content_from_url(url)
+            content, title, h1, h2s, h3s = extract_content_from_url(url)
             if content and len(content) > 100:
                 texts.append(content)
                 valid_urls.append(url)
                 word_counts[url] = len(content.split())
+                structure_rows.append([url, title, h1, " | ".join(h2s + h3s)])
             else:
                 st.warning(f"Contenu insuffisant ou vide : {url}")
             time.sleep(0.5)
@@ -140,24 +145,18 @@ def run():
             total_occurrence = counts.sum()
             doc_count = (counts > 0).sum()
             if is_relevant_expression(expr) and (doc_count / total_docs) >= 0.4:
-                moyenne = round(total_occurrence / total_docs, 2)
+                moyenne = round(total_occurrence / total_docs)
                 min_occur = int(counts.min())
                 max_occur = int(counts.max())
                 moyenne_fmt = f"{moyenne} ({max_occur}-{min_occur})"
                 couverture = round((doc_count / total_docs) * 100)
-                densite = round((total_occurrence / total_words) * 100, 2)
-                data.append((expr, moyenne_fmt, couverture, densite))
+                densite = round((total_occurrence / total_words) * 100, 1)
+                data.append((expr, moyenne_fmt, f"{couverture}%", f"{densite}%"))
 
         df_final = pd.DataFrame(data, columns=["Expression", "Moyenne par contenu", "% Présence", "Densité moyenne"])
-        df_final = df_final[df_final["% Présence"] >= 40]
-        df_final = df_final.sort_values(by=["% Présence", "Densité moyenne", "Moyenne par contenu"], ascending=[False, False, False]).reset_index(drop=True)
-
-        df_final["% Présence"] = df_final["% Présence"].astype(str) + "%"
-        df_final["Densité moyenne"] = df_final["Densité moyenne"].astype(str) + "%"
-
+        df_final = df_final.sort_values(by=["% Présence", "Densité moyenne"], ascending=[False, False]).reset_index(drop=True)
         st.dataframe(df_final, use_container_width=True)
 
-        # Statistiques globales
         st.subheader("📈 Statistiques globales")
         med_words = int(np.median(all_word_counts))
         avg_words = int(np.mean(all_word_counts))
@@ -166,5 +165,10 @@ def run():
         st.markdown(f"**Nombre moyen de mots :** {avg_words}")
 
         st.markdown("**Top 20 des expressions les plus stratégiques :**")
-        top_10 = df_final.head(20).reset_index(drop=True)
-        st.dataframe(top_10, use_container_width=True)
+        top_20 = df_final.head(20).reset_index(drop=True)
+        st.dataframe(top_20, use_container_width=True)
+
+        # Encart structure de contenu par page
+        st.subheader("📚 Structure des pages (title, h1, h2, h3)")
+        structure_df = pd.DataFrame(structure_rows, columns=["URL", "Title", "H1", "Structure H2-H3"])
+        st.dataframe(structure_df, use_container_width=True)
