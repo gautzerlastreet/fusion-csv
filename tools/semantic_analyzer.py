@@ -152,7 +152,14 @@ def run() -> None:
 
     # Affichage
     with st.expander('📊 Nombre de mots par URL',expanded=True):
-        st.dataframe(df_stats.style.format({'Word Count':'{:.0f}'}),use_container_width=True)
+        # Align text columns left and numbers center
+        sty = df_stats.style.format({'Word Count':'{:.0f}'}) \
+            .set_table_styles([
+                {'selector': 'th', 'props': [('text-align', 'center')]}
+            ]) \
+            .set_properties(subset=['URL'], **{'text-align':'left'}) \
+            .set_properties(subset=['Word Count'], **{'text-align':'center'})
+        st.dataframe(sty, use_container_width=True)
     with st.expander('🗂️ Structure hiérarchique',expanded=False):
         st.write('Title et H1, puis sous-titres H2/H3:')
         st.write(df_struct.to_html(escape=False),unsafe_allow_html=True)
