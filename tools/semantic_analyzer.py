@@ -27,7 +27,7 @@ logger.setLevel(logging.INFO)
 session = Session()
 session.headers.update({'User-Agent': 'SemanticAnalyzer/1.0'})
 
-# --- Pre-compiled Regex Patterns ---
+# --- Regex Patterns ---
 PUNCT_PATTERN = re.compile(r"[^\w\s]")
 DIGIT_PATTERN = re.compile(r"\d+")
 MULTI_SPACE_PATTERN = re.compile(r"\s+")
@@ -57,7 +57,6 @@ EXCLUDED_EXPRESSIONS = {
 
 # --- Utility Functions ---
 def clean_text(text: str) -> str:
-    """Lowercase, remove punctuation, digits, extra spaces."""
     txt = text.lower()
     txt = PUNCT_PATTERN.sub(' ', txt)
     txt = DIGIT_PATTERN.sub('', txt)
@@ -66,42 +65,35 @@ def clean_text(text: str) -> str:
 
 
 def is_relevant_expression(expr: str) -> bool:
-    """At least 2 words and not in excluded list."""
-    if not isinstance(expr, str):
-        return False
+    if not isinstance(expr, str): return False
     words = expr.lower().split()
-    if len(words) < 2:
-        return False
+    if len(words) < 2: return False
     return all(excl not in expr.lower() for excl in EXCLUDED_EXPRESSIONS)
 
 @st.cache_data(ttl=3600)
 def extract_content_from_url(url: str) -> Dict:
-    """
-    Scrape URL content within <main> or largest <div>, extract text, media, and unique links.
-    """
-    data = {'raw': '', 'title': '', 'h1': '', 'subsecs': [],
-            'images': 0, 'tables': 0, 'buttons': 0,
-            'internal': 0, 'external': 0}
+    data = {'raw':'','title':'','h1':'','subsecs':[],
+            'images':0,'tables':0,'buttons':0,
+            'internal':0,'external':0}
     try:
         resp = session.get(url, timeout=10)
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
+        soup = BeautifulSoup(resp.text,'html.parser')
         base = urlparse(url).netloc
-        # Remove irrelevant tags
-        for tag in soup(['script', 'style', 'header', 'footer', 'nav', 'form']):
+        # Remove scripts/styles/navigation blocks
+        for tag in soup(['script','style','header','footer','nav','form']):
             tag.decompose()
-        # Determine main content container
+        # Select main container or largest div
         container = soup.find('main') or soup.find(id='content')
         if not container:
             divs = soup.find_all('div')
             container = max(divs, key=lambda d: len(d.get_text().split()), default=soup.body)
-        # Media counts within container
+        # Count media
         data['images'] = len(container.find_all('img'))
         data['tables'] = len(container.find_all('table'))
         data['buttons'] = len(container.find_all('button'))
-        # Unique link counts within container
-        internal_links = set()
-        external_links = set()
+        # Count unique links
+        internal_links, external_links = set(), set()
         for a in container.find_all('a', href=True):
             href = a['href']
             parsed = urlparse(href)
@@ -111,13 +103,13 @@ def extract_content_from_url(url: str) -> Dict:
                 internal_links.add(href)
         data['internal'] = len(internal_links)
         data['external'] = len(external_links)
-        # Text and hierarchy within container
+        # Extract text structure
         paras = []
-        for tag in container.find_all(['h1', 'h2', 'h3', 'p']):
+        for tag in container.find_all(['h1','h2','h3','p']):
             txt = tag.get_text(' ', strip=True)
             if tag.name == 'h1' and not data['h1']:
                 data['h1'] = txt
-            elif tag.name in ['h2', 'h3']:
+            elif tag.name in ['h2','h3']:
                 data['subsecs'].append(f"{tag.name.upper()}: {txt}")
             elif tag.name == 'p':
                 paras.append(txt)
@@ -128,8 +120,7 @@ def extract_content_from_url(url: str) -> Dict:
     return data
 
 
-def get_readability_scores(text: str) -> Dict[str, int]:
-    """Compute and round readability metrics."""
+def get_readability_scores(text: str) -> Dict[str,int]:
     return {
         'Flesch Ease': int(round(textstat.flesch_reading_ease(text))),
         'Kincaid Grade': int(round(textstat.flesch_kincaid_grade(text))),
@@ -139,111 +130,102 @@ def get_readability_scores(text: str) -> Dict[str, int]:
 # --- Main Streamlit App ---
 def run() -> None:
     st.title('🔍 Semantic Analyzer')
-    st.markdown('**Comparez plusieurs pages pour extraire expressions clés, structure, médias et liens**')
+    st.markdown('**Comparez plusieurs pages et comparez-les à votre page**')
 
-    urls_input = st.text_area('Entrez les URLs (une par ligne)', height=150)
-    language = st.selectbox('Langue du contenu', ['french', 'english'])
+    urls_input = st.text_area('Entrez les URLs à comparer (une par ligne)', height=150)
+    user_url = st.text_input("Entrez votre URL pour comparaison (facultatif)")
+    language = st.selectbox('Langue du contenu', ['french','english'])
 
-    if not st.button('Analyser'):
-        return
-    urls = [u.strip() if u.startswith(('http://', 'https://')) else f"https://{u.strip()}"
+    if not st.button('Analyser'): return
+    urls = [u.strip() if u.startswith(('http://','https://')) else f"https://{u.strip()}"
             for u in urls_input.splitlines() if u.strip()]
     if len(urls) < 2:
         st.error('Veuillez fournir au moins 2 URLs.')
         return
 
-    # Parallel scraping
+    # Scrape competitor pages
     progress = st.progress(0)
-    results: Dict[str, Dict] = {}
+    results = {}
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(extract_content_from_url, u): u for u in urls}
         for i, fut in enumerate(as_completed(futures)):
             url = futures[fut]
             results[url] = fut.result()
-            progress.progress((i + 1) / len(urls))
+            progress.progress((i+1)/len(urls))
 
-    # Combined Structure & Stats
-    df_comb = pd.DataFrame([{
-        'URL': u,
-        'Word Count': len(clean_text(d['raw']).split()),
-        'Title': d['title'],
-        'H1': d['h1'],
-        'Structure': '<br>'.join(d['subsecs'])
-    } for u, d in results.items()])
-    with st.expander('🗂️ Structure & Stats', expanded=True):
-        sty_comb = df_comb.style \
-            .set_table_styles([
-                {'selector': 'th', 'props': [('text-align', 'center')]},
-                {'selector': 'td', 'props': [('white-space', 'normal')]}  
-            ]) \
-            .set_properties(subset=['URL', 'Title', 'H1', 'Structure'], **{'text-align': 'left', 'width': '250px'}) \
-            .set_properties(subset=['Word Count'], **{'text-align': 'center', 'width': '80px'})
-        st.dataframe(sty_comb, use_container_width=True)
+    # Scrape user page if given
+    user_data = None
+    if user_url:
+        if not user_url.startswith(('http://','https://')):
+            user_url = 'https://' + user_url.strip()
+        user_data = extract_content_from_url(user_url)
 
-    # Media & Links
-    df_media = pd.DataFrame([{
-        'URL': u,
-        'Images': d['images'],
-        'Tables': d['tables'],
-        'Buttons': d['buttons'],
-        'Internal Links': d['internal'],
-        'External Links': d['external']
-    } for u, d in results.items()])
-    with st.expander('📊 Media & Links', expanded=False):
-        sty_media = df_media.style \
-            .set_table_styles([
-                {'selector': 'th', 'props': [('text-align', 'center')]},
-                {'selector': 'td', 'props': [('white-space', 'normal')]}  
-            ]) \
-            .set_properties(subset=['URL'], **{'text-align': 'left', 'width': '200px'}) \
-            .set_properties(subset=['Images', 'Tables', 'Buttons', 'Internal Links', 'External Links'], **{'text-align': 'center', 'width': '80px'})
-        st.dataframe(sty_media, use_container_width=True)
-
-    # Expressions Clés (CountVectorizer)
+    # Build DataFrames
+    df_stats = pd.DataFrame([{'URL':u, 'Word Count': len(clean_text(d['raw']).split())}
+                             for u, d in results.items()])
+    df_media = pd.DataFrame([{'URL':u, 'Images': d['images'], 'Tables': d['tables'], 'Buttons': d['buttons'],
+                               'Internal': d['internal'], 'External': d['external']}
+                              for u, d in results.items()])
     docs = [clean_text(d['raw']) for d in results.values()]
-    stop_words = stopwords.words(language)
-    cv = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words)
+    stopw = stopwords.words(language)
+    cv = CountVectorizer(ngram_range=(2,4), stop_words=stopw)
     X = cv.fit_transform(docs)
     terms = cv.get_feature_names_out()
-    cov = np.array((X > 0).sum(axis=0)).ravel() / len(docs) * 100
-    mask = cov >= 40
+    cov = np.array((X>0).sum(axis=0)).ravel() / len(docs) * 100
     rows = []
-    for term in terms[mask][:40]:
+    for term in terms[cov>=40][:40]:
         counts = X[:, cv.vocabulary_[term]].toarray().ravel()
-        nz = counts[counts > 0]
-        mean_count = int(round(nz.mean())) if nz.size > 0 else 0
+        nz = counts[counts>0]
+        mean_ct = int(round(nz.mean())) if nz.size>0 else 0
         if is_relevant_expression(term):
-            rows.append({'Expression': term, 'Mean Count': mean_count, 'Doc Coverage (%)': int(round(cov[cv.vocabulary_[term]]))})
-    df_cv = pd.DataFrame(rows).sort_values('Doc Coverage (%)', ascending=False)
-    with st.expander('🧩 Expressions clés', expanded=False):
-        sty_cv = df_cv.style \
-            .set_table_styles([
-                {'selector': 'th', 'props': [('text-align', 'center')]},
-                {'selector': 'td', 'props': [('white-space', 'normal')]}  
-            ]) \
-            .set_properties(subset=['Expression'], **{'text-align': 'left', 'width': '200px'}) \
-            .set_properties(subset=['Mean Count', 'Doc Coverage (%)'], **{'text-align': 'center', 'width': '80px'})
-        st.dataframe(sty_cv, use_container_width=True)
+            rows.append({'Expression':term, 'Mean Count':mean_ct, 'Coverage (%)': int(round(cov[cv.vocabulary_[term]]))})
+    df_cv = pd.DataFrame(rows).sort_values('Coverage (%)', ascending=False)
+    df_read = pd.DataFrame([{'URL':u, **get_readability_scores(d['raw'])}
+                             for u, d in results.items()])
 
-    # Readability Metrics
-    df_read = pd.DataFrame([{'URL': u, **get_readability_scores(d['raw'])} for u, d in results.items()])
+    # Comparative Summary if user_url provided
+    if user_data:
+        st.subheader('🔍 Analyse comparative de votre page')
+        uwc = len(clean_text(user_data['raw']).split())
+        median_wc = int(df_stats['Word Count'].median())
+        mean_wc = int(df_stats['Word Count'].mean())
+        c1, c2 = st.columns(2)
+        c1.metric('Mots (votre page)', uwc, delta=uwc-mean_wc)
+        c2.metric('Médiane groupe', median_wc)
+        # Missing keywords
+        group_terms = set(df_cv['Expression'])
+        user_text = clean_text(user_data['raw'])
+        missing = [t for t in group_terms if t not in user_text]
+        st.markdown(f"**Mots clés manquants ({len(missing)})**: {', '.join(missing[:10])}{'...' if len(missing)>10 else ''}")
+        # Readability comparison
+        ur = get_readability_scores(user_data['raw'])
+        mean_read = df_read.mean(numeric_only=True).round().astype(int)
+        r1, r2, r3 = st.columns(3)
+        r1.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=ur['Flesch Ease']-mean_read['Flesch Ease'])
+        r2.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=ur['Kincaid Grade']-mean_read['Kincaid Grade'])
+        r3.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=ur['Gunning Fog']-mean_read['Gunning Fog'])
+
+    # Display Sections
+    with st.expander('🗂️ Structure & Stats', expanded=True):
+        df_str = pd.DataFrame([{'URL':u, 'Title':d['title'], 'H1':d['h1'], 'Structure': ' | '.join(d['subsecs'])}
+                                for u, d in results.items()])
+        st.dataframe(pd.merge(df_stats, df_str, on='URL'), use_container_width=True)
+    with st.expander('📊 Media & Links', expanded=False):
+        st.dataframe(df_media, use_container_width=True)
+    with st.expander('🧩 Expressions clés', expanded=False):
+        st.dataframe(df_cv, use_container_width=True)
     mean_vals = df_read.mean(numeric_only=True).round().astype(int)
-    col1, col2, col3 = st.columns(3)
-    col1.metric('Moyenne Flesch Ease', mean_vals['Flesch Ease'])
-    col2.metric('Moyenne Kincaid Grade', mean_vals['Kincaid Grade'])
-    col3.metric('Moyenne Gunning Fog', mean_vals['Gunning Fog'])
+    m1, m2, m3 = st.columns(3)
+    m1.metric('Moy. Flesch Ease', mean_vals['Flesch Ease'])
+    m2.metric('Moy. Kincaid Grade', mean_vals['Kincaid Grade'])
+    m3.metric('Moy. Gunning Fog', mean_vals['Gunning Fog'])
     with st.expander('📖 Readability Metrics', expanded=False):
-        sty_read = df_read.style \
-            .set_table_styles([
-                {'selector': 'th', 'props': [('text-align', 'center')]},
-                {'selector': 'td', 'props': [('white-space', 'normal')]}  
-            ]) \
-            .set_properties(subset=['URL'], **{'text-align': 'left', 'width': '200px'}) \
-            .set_properties(subset=['Flesch Ease', 'Kincaid Grade', 'Gunning Fog'], **{'text-align': 'center', 'width': '80px'})
-        st.dataframe(sty_read, use_container_width=True)
+        st.dataframe(df_read, use_container_width=True)
 
     # Export CSVs
-    st.download_button('📥 Export Structure & Stats', df_comb.to_csv(index=False), file_name='structure_stats.csv')
+    st.download_button('📥 Export Structure & Stats',
+                       pd.merge(df_stats, df_str, on='URL').to_csv(index=False),
+                       file_name='structure_stats.csv')
     st.download_button('📥 Export Media & Links', df_media.to_csv(index=False), file_name='media_links.csv')
     st.download_button('📥 Export Expressions', df_cv.to_csv(index=False), file_name='expressions.csv')
     st.download_button('📥 Export Readability', df_read.to_csv(index=False), file_name='readability.csv')
