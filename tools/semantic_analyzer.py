@@ -56,9 +56,23 @@ def run():
             st.error(f"Erreur lors de l'extraction de {url}: {str(e)}")
             return ""
 
-    EXCLUDED_EXPRESSIONS = set([...])  # mêmes données que précédemment
+    EXCLUDED_EXPRESSIONS = set([
+        "bonjour", "merci", "au revoir", "salut", "bienvenue", "félicitations", "bravo",
+        "cookies", "données personnelles", "caractère personnel", "protection des données",
+        "mentions légales", "charte d’utilisation", "politique de confidentialité",
+        "gérer les cookies", "gestion des cookies", "stockées ou extraites",
+        "consentement aux cookies", "continuer sans accepter", "formulaire de contact",
+        "envoyer des publicités", "adresse ip", "email", "utilisateur", "utilisateurs",
+        "site web", "avis", "blog", "newsletter", "guide d’achat", "savoir plus",
+        "nous utilisons", "afin de", "valider votre inscription", "rien à voir",
+        "accéder au contenu", "lire la suite", "page d’accueil", "the menu items",
+        "css", "er", "google llc", "site"
+    ])
 
     def is_relevant_expression(expr):
+        if not isinstance(expr, str):
+            return False
+        expr = expr.lower()
         if expr in EXCLUDED_EXPRESSIONS:
             return False
         if any(stop in expr for stop in EXCLUDED_EXPRESSIONS):
@@ -69,12 +83,10 @@ def run():
 
     def deduplicate_ngrams(ngrams):
         deduped = []
-        seen = set()
         for expr, count in sorted(ngrams, key=lambda x: (-len(x[0].split()), -x[1])):
             words = tuple(expr.split())
             if not any(set(words).issubset(set(existing.split())) for existing, _ in deduped):
                 deduped.append((expr, count))
-                seen.add(expr)
         return deduped
 
     st.title("🔍 Semantic Analyzer")
