@@ -68,12 +68,10 @@ if uploaded_files:
         export_format = st.selectbox("Format de téléchargement :", ["CSV", "Excel (.xlsx)"])
 
         if export_format == "CSV":
-            csv_buffer = io.StringIO()
-            fusion.to_csv(csv_buffer, index=False)
-            csv_data = csv_buffer.getvalue()  # ✅ CORRECTION ici
+            csv_text = fusion.to_csv(index=False)  # ✅ ici on obtient une chaîne de caractères
             st.download_button(
                 label="📥 Télécharger en CSV",
-                data=csv_data,
+                data=csv_text,
                 file_name="fusion.csv",
                 mime="text/csv"
             )
