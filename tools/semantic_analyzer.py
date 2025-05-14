@@ -22,7 +22,6 @@ def run():
             nltk.download('stopwords')
     download_nltk_resources()
 
-    # Expressions à exclure
     EXCLUDED_EXPRESSIONS = set([
         "bonjour", "merci", "au revoir", "salut", "bienvenue", "félicitations", "bravo",
         "cookies", "données personnelles", "caractère personnel", "protection des données", "mentions légales",
@@ -45,13 +44,6 @@ def run():
                 return False
         return True
 
-    def deduplicate_ngrams(ngrams):
-        deduped = []
-        for expr, count in sorted(ngrams, key=lambda x: (-len(x[0].split()), -x[1])):
-            if not any(expr in longer for longer, _ in deduped):
-                deduped.append((expr, count))
-        return deduped
-
     def clean_text(text):
         text = text.lower()
         text = re.sub(r'[^\w\s]', ' ', text)
@@ -68,10 +60,18 @@ def run():
             body = soup.body
             if not body:
                 return ""
-            for tag in body(['script', 'style', 'meta', 'nav', 'footer', 'header']):
+            for tag in body(['script', 'style', 'meta', 'nav', 'footer', 'header', 'h4', 'h5', 'table']):
                 tag.decompose()
-            content = body.get_text(separator=" ", strip=True)
-            return re.sub(r'\s+', ' ', content)
+            content = []
+            skip = False
+            for tag in body.find_all(True):
+                if tag.name in ['h4', 'h5']:
+                    skip = True
+                elif tag.name.startswith('h'):
+                    skip = False
+                elif not skip and tag.name == 'p':
+                    content.append(tag.get_text(" ", strip=True))
+            return re.sub(r'\s+', ' ', " ".join(content))
         except Exception as e:
             st.error(f"Erreur pour {url} : {str(e)}")
             return ""
@@ -117,14 +117,12 @@ def run():
         cleaned_texts = [clean_text(txt) for txt in texts]
         stop_words = stopwords.words(language)
 
-        # Nombre de mots
         st.subheader("📊 Nombre de mots par URL")
         wc_df = pd.DataFrame(list(word_counts.items()), columns=["URL", "Nombre de mots"])
         st.dataframe(wc_df, use_container_width=True)
 
-        # Expressions communes
         st.subheader("🧩 Expressions clés communes (2 à 4 mots)")
-        vec = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words, max_features=1000)
+        vec = CountVectorizer(ngram_range=(2, 4), stop_words=stop_words, max_features=3000)
         X = vec.fit_transform(cleaned_texts)
         features = vec.get_feature_names_out()
         presence = (X > 0).sum(axis=0).A1
@@ -133,11 +131,11 @@ def run():
 
         data = []
         for expr, total_occurrence, doc_count in zip(features, sums, presence):
-            if is_relevant_expression(expr):
+            if is_relevant_expression(expr) and (doc_count / total_docs) >= 0.2:
                 moyenne = round(total_occurrence / total_docs, 2)
                 couverture = f"{round((doc_count / total_docs) * 100)}%"
                 data.append((expr, moyenne, couverture))
 
         df_final = pd.DataFrame(data, columns=["Expression", "Moyenne par contenu", "% Présence"])
-        df_final = df_final.sort_values(by="Moyenne par contenu", ascending=False).reset_index(drop=True)
+        df_final = df_final.sort_values(by=["% Présence", "Moyenne par contenu"], ascending=[False, False]).reset_index(drop=True)
         st.dataframe(df_final, use_container_width=True)
