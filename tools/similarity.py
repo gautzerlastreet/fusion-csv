@@ -3,7 +3,8 @@ import pandas as pd
 import re
 
 # Fonction pour filtrer et formater les mots-clés
- def parse_filter_format_keywords(list_str: str, threshold: float):
+
+def parse_filter_format_keywords(list_str: str, threshold: float):
     if not isinstance(list_str, str):
         return [], 0, 0, 0
     keywords_list = list_str.split(" | ")
@@ -29,7 +30,7 @@ import re
 def main_tab():
     st.title("Similarity Refine")
     uploaded_file = st.file_uploader("Choisissez un fichier", type=["xlsx", "xls"])
-    if not uploaded_file:
+    if uploaded_file is None:
         return
 
     try:
@@ -48,16 +49,20 @@ def main_tab():
     # Appliquer le filtrage
     df[["Filtered Keywords", "Total Volume", "Avg Similarity", "Keyword Count"]] = df.apply(
         lambda x: parse_filter_format_keywords(x["Liste MC et %"], threshold),
-        axis=1, result_type="expand"
+        axis=1,
+        result_type="expand"
     )
 
     # Trier et supprimer doublons de mots clés primaire
     df_sorted = df.sort_values(by="Vol. mensuel", ascending=False)
-    seen = set(); rows=[]
+    seen = set()
+    rows = []
     for idx, row in df_sorted.iterrows():
         primary = row["Mot-clé"].split(" (")[0]
-        if primary in seen: continue
-        seen.add(primary); rows.append(idx)
+        if primary in seen:
+            continue
+        seen.add(primary)
+        rows.append(idx)
     df_filtered = df_sorted.loc[rows]
 
     # Concaténation mots clés secondaires
@@ -104,5 +109,7 @@ def about_tab():
 
 def run():
     tabs = st.tabs(["Main", "About"])
-    with tabs[0]: main_tab()
-    with tabs[1]: about_tab()
+    with tabs[0]:
+        main_tab()
+    with tabs[1]:
+        about_tab()
