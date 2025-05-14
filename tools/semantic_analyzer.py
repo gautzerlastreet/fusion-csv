@@ -186,43 +186,61 @@ def run():
         median_wc = int(df_stats['Word Count'].median())
         mean_wc = int(df_stats['Word Count'].mean())
         st.subheader('🔍 Analyse comparative de votre page')
-        st.metric('Mots (votre page)', uwc, delta=uwc - mean_wc)
-        st.metric('Médiane groupe', median_wc)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric('Mots (votre page)', uwc, delta=uwc - mean_wc)
+        with col2:
+            st.metric('Médiane groupe', median_wc)
 
         missing = [t for t in df_cv['Expression'].tolist() if t not in clean_text(user_data['raw'])]
         if missing:
+            st.markdown('**Mots clés manquants :**')
             st.table(pd.DataFrame({'Mots clés manquants': missing}))
         else:
-            st.write('Aucun mot clé manquant pertinent.')
+            st.markdown('✅ Aucun mot clé manquant pertinent.')
 
         for col in ['images', 'internal', 'external']:
             if col not in df_media.columns:
                 df_media[col] = 0
         media_mean = df_media[['images', 'internal', 'external']].mean().round().astype(int)
         imgs, intern, extern = user_data['images'], user_data['internal'], user_data['external']
-        try:
-            st.metric('Images (vous)', imgs, delta=int(imgs - media_mean['images']))
-        except:
-            st.metric('Images (vous)', imgs)
-        try:
-            st.metric('Liens internes (vous)', intern, delta=int(intern - media_mean['internal']))
-        except:
-            st.metric('Liens internes (vous)', intern)
-        try:
-            st.metric('Liens externes (vous)', extern, delta=int(extern - media_mean['external']))
-        except:
-            st.metric('Liens externes (vous)', extern)
+
+        colm1, colm2, colm3 = st.columns(3)
+        with colm1:
+            try:
+                st.metric('Images (vous)', imgs, delta=int(imgs - media_mean['images']))
+            except:
+                st.metric('Images (vous)', imgs)
+        with colm2:
+            try:
+                st.metric('Liens internes (vous)', intern, delta=int(intern - media_mean['internal']))
+            except:
+                st.metric('Liens internes (vous)', intern)
+        with colm3:
+            try:
+                st.metric('Liens externes (vous)', extern, delta=int(extern - media_mean['external']))
+            except:
+                st.metric('Liens externes (vous)', extern)
 
         ur = get_readability_scores(user_data['raw'])
         mean_read = df_read.mean(numeric_only=True).round().astype(int)
-        try:
-            st.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=int(ur['Flesch Ease'] - mean_read['Flesch Ease']))
-            st.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=int(ur['Kincaid Grade'] - mean_read['Kincaid Grade']))
-            st.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=int(ur['Gunning Fog'] - mean_read['Gunning Fog']))
-        except:
-            st.metric('Flesch Ease (vous)', ur['Flesch Ease'])
-            st.metric('Kincaid Grade (vous)', ur['Kincaid Grade'])
-            st.metric('Gunning Fog (vous)', ur['Gunning Fog'])
+
+        colr1, colr2, colr3 = st.columns(3)
+        with colr1:
+            try:
+                st.metric('Flesch Ease (vous)', ur['Flesch Ease'], delta=int(ur['Flesch Ease'] - mean_read['Flesch Ease']))
+            except:
+                st.metric('Flesch Ease (vous)', ur['Flesch Ease'])
+        with colr2:
+            try:
+                st.metric('Kincaid Grade (vous)', ur['Kincaid Grade'], delta=int(ur['Kincaid Grade'] - mean_read['Kincaid Grade']))
+            except:
+                st.metric('Kincaid Grade (vous)', ur['Kincaid Grade'])
+        with colr3:
+            try:
+                st.metric('Gunning Fog (vous)', ur['Gunning Fog'], delta=int(ur['Gunning Fog'] - mean_read['Gunning Fog']))
+            except:
+                st.metric('Gunning Fog (vous)', ur['Gunning Fog'])
 
     st.download_button('📥 Export CSV Structure & Stats', pd.merge(df_stats, df_struct, on='URL').to_csv(index=False), file_name='structure_stats.csv')
     st.download_button('📥 Export CSV Media & Links', df_media.to_csv(index=False), file_name='media_links.csv')
